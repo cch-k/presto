@@ -95,6 +95,7 @@
         <module>presto-kafka</module>
         <module>presto-redis</module>
         <module>presto-accumulo</module>
+        <module>presto-accumulo2</module>
         <module>presto-cassandra</module>
         <module>presto-bigquery</module>
         <module>presto-blackhole</module>
