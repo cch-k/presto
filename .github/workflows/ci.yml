@@ -247,7 +247,6 @@ jobs:
             !presto-tests,
             !presto-raptor,
             !presto-accumulo,
-            !presto-accumulo2,
             !presto-cassandra,
             !presto-hive,
             !presto-kudu,
@@ -283,7 +282,6 @@ jobs:
           - ":presto-tests -P ci-only-resource-manager"
           - ":presto-raptor"
           - ":presto-accumulo"
-          - ":presto-accumulo2"
           - ":presto-cassandra -P test-cassandra-integration-smoke-test"
           - ":presto-hive"
           - ":presto-hive -P test-hive-materialized-queries"
