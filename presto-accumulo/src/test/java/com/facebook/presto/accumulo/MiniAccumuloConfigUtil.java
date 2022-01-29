@@ -34,7 +34,7 @@ public final class MiniAccumuloConfigUtil
     public static void setConfigClassPath(MiniAccumuloConfig config)
     {
         List<String> items = Splitter.on(File.pathSeparatorChar)
-            .splitToList(getRuntimeMXBean().getClassPath());
+                .splitToList(getRuntimeMXBean().getClassPath());
         getConfigImpl(config).setClasspathItems(items.toArray(new String[0]));
     }
 

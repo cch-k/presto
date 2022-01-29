@@ -189,7 +189,7 @@
             <groupId>com.facebook.presto.hadoop</groupId>
             <artifactId>hadoop-apache2</artifactId>
             <version>2.7.4-9</version>
-            <!--            <scope>runtime</scope>-->
+            <scope>runtime</scope>
         </dependency>
 
         <dependency>

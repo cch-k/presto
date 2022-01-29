@@ -140,7 +140,7 @@ public class TestIndexer
 
     //    @Test
     public void testMutationIndex()
-        throws Exception
+            throws Exception
     {
         Connector conn = inst.getConnector("root", new PasswordToken(""));
         conn.tableOperations().create(table.getFullTableName());
@@ -225,7 +225,7 @@ public class TestIndexer
 
     //    @Test
     public void testMutationIndexWithVisibilities()
-        throws Exception
+            throws Exception
     {
         Connector conn = inst.getConnector("root", new PasswordToken(""));
         conn.securityOperations().changeUserAuthorizations("root", new Authorizations("private", "moreprivate"));

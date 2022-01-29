@@ -31,14 +31,14 @@ import static org.apache.accumulo.core.clientImpl.lexicoder.ByteUtils.unescape;
  * @param <V> Value data type
  */
 public class MapLexicoder<K, V>
-    implements Lexicoder<Map<K, V>>
+        implements Lexicoder<Map<K, V>>
 {
     private final Lexicoder<K> keyLexicoder;
     private final Lexicoder<V> valueLexicoder;
 
     public MapLexicoder(
-        Lexicoder<K> keyLexicoder,
-        Lexicoder<V> valueLexicoder)
+            Lexicoder<K> keyLexicoder,
+            Lexicoder<V> valueLexicoder)
     {
         this.keyLexicoder = keyLexicoder;
         this.valueLexicoder = valueLexicoder;
