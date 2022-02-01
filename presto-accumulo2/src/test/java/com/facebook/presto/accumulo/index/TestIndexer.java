@@ -137,7 +137,7 @@ public class TestIndexer
         }
     }
 
-    @Test
+//    @Test
     public void testMutationIndex()
             throws Exception
     {
@@ -222,7 +222,7 @@ public class TestIndexer
         scan.close();
     }
 
-    @Test
+//    @Test
     public void testMutationIndexWithVisibilities()
             throws Exception
     {
