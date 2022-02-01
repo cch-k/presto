@@ -110,7 +110,7 @@ public class TestIndexer
 
     @Test
     public void testMutationIndex()
-        throws Exception
+            throws Exception
     {
         Instance inst = new MockInstance();
         Connector conn = inst.getConnector("root", new PasswordToken(""));
@@ -196,7 +196,7 @@ public class TestIndexer
 
     @Test
     public void testMutationIndexWithVisibilities()
-        throws Exception
+            throws Exception
     {
         Instance inst = new MockInstance();
         Connector conn = inst.getConnector("root", new PasswordToken(""));

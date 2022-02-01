@@ -103,7 +103,7 @@ import static java.util.Objects.requireNonNull;
  */
 @NotThreadSafe
 public class Indexer
-    implements Closeable
+        implements Closeable
 {
     public static final ByteBuffer METRICS_TABLE_ROW_ID = wrap("___METRICS_TABLE___".getBytes(UTF_8));
     public static final ByteBuffer METRICS_TABLE_ROWS_CF = wrap("___rows___".getBytes(UTF_8));
@@ -133,11 +133,11 @@ public class Indexer
     private byte[] lastRow;
 
     public Indexer(
-        Connector connector,
-        Authorizations auths,
-        AccumuloTable table,
-        BatchWriterConfig writerConfig)
-        throws TableNotFoundException
+            Connector connector,
+            Authorizations auths,
+            AccumuloTable table,
+            BatchWriterConfig writerConfig)
+            throws TableNotFoundException
     {
         this.connector = requireNonNull(connector, "connector is null");
         this.table = requireNonNull(table, "table is null");
@@ -454,7 +454,7 @@ public class Indexer
     public static String getMetricsTableName(String schema, String table)
     {
         return schema.equals("default") ? table + "_idx_metrics"
-            : schema + '.' + table + "_idx_metrics";
+                : schema + '.' + table + "_idx_metrics";
     }
 
     /**
@@ -469,7 +469,7 @@ public class Indexer
     }
 
     public static Pair<byte[], byte[]> getMinMaxRowIds(Connector connector, AccumuloTable table, Authorizations auths)
-        throws TableNotFoundException
+            throws TableNotFoundException
     {
         Scanner scanner = connector.createScanner(table.getMetricsTableName(), auths);
         scanner.setRange(new Range(new Text(Indexer.METRICS_TABLE_ROW_ID.array())));
@@ -536,8 +536,8 @@ public class Indexer
 
             MetricsKey other = (MetricsKey) obj;
             return Objects.equals(this.row, other.row)
-                && Objects.equals(this.family, other.family)
-                && Objects.equals(this.visibility, other.visibility);
+                    && Objects.equals(this.family, other.family)
+                    && Objects.equals(this.visibility, other.visibility);
         }
 
         @Override
@@ -550,10 +550,10 @@ public class Indexer
         public String toString()
         {
             return toStringHelper(this)
-                .add("row", new String(row.array(), UTF_8))
-                .add("family", new String(row.array(), UTF_8))
-                .add("visibility", visibility.toString())
-                .toString();
+                    .add("row", new String(row.array(), UTF_8))
+                    .add("family", new String(row.array(), UTF_8))
+                    .add("visibility", visibility.toString())
+                    .toString();
         }
     }
 }
