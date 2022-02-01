@@ -13,7 +13,6 @@
  */
 package com.facebook.presto.accumulo.index;
 
-import com.facebook.presto.accumulo.MiniAccumuloConfigUtil;
 import com.facebook.presto.accumulo.metadata.AccumuloTable;
 import com.facebook.presto.accumulo.model.AccumuloColumnHandle;
 import com.facebook.presto.accumulo.serializers.AccumuloRowSerializer;
@@ -22,7 +21,12 @@ import com.facebook.presto.common.type.ArrayType;
 import com.facebook.presto.common.type.Type;
 import com.google.common.collect.ImmutableList;
 import com.google.common.io.Files;
-import org.apache.accumulo.core.client.*;
+import org.apache.accumulo.core.client.BatchWriterConfig;
+import org.apache.accumulo.core.client.Connector;
+import org.apache.accumulo.core.client.Instance;
+import org.apache.accumulo.core.client.IteratorSetting;
+import org.apache.accumulo.core.client.Scanner;
+import org.apache.accumulo.core.client.ZooKeeperInstance;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
@@ -31,8 +35,6 @@ import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.security.ColumnVisibility;
 import org.apache.accumulo.minicluster.MiniAccumuloCluster;
-import org.apache.accumulo.minicluster.MiniAccumuloConfig;
-import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
@@ -116,7 +118,8 @@ public class TestIndexer
     }
 
     @BeforeMethod
-    public void setup() throws Exception {
+    public void setup() throws Exception
+    {
         tempDir = Files.createTempDir();
         accumulo = new MiniAccumuloCluster(tempDir, "");
         accumulo.start();
@@ -124,10 +127,12 @@ public class TestIndexer
     }
 
     @AfterMethod
-    public void tearDown() throws Exception {
+    public void tearDown() throws Exception
+    {
         try {
             accumulo.stop();
-        } finally {
+        }
+        finally {
             tempDir.delete();
         }
     }
