@@ -19,10 +19,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 
-import static org.apache.accumulo.core.clientImpl.lexicoder.ByteUtils.concat;
-import static org.apache.accumulo.core.clientImpl.lexicoder.ByteUtils.escape;
-import static org.apache.accumulo.core.clientImpl.lexicoder.ByteUtils.split;
-import static org.apache.accumulo.core.clientImpl.lexicoder.ByteUtils.unescape;
+import static org.apache.accumulo.core.client.lexicoder.impl.ByteUtils.concat;
+import static org.apache.accumulo.core.client.lexicoder.impl.ByteUtils.escape;
+import static org.apache.accumulo.core.client.lexicoder.impl.ByteUtils.split;
+import static org.apache.accumulo.core.client.lexicoder.impl.ByteUtils.unescape;
 
 /**
  * Accumulo lexicoder for encoding a Java Map
@@ -31,14 +31,14 @@ import static org.apache.accumulo.core.clientImpl.lexicoder.ByteUtils.unescape;
  * @param <V> Value data type
  */
 public class MapLexicoder<K, V>
-        implements Lexicoder<Map<K, V>>
+    implements Lexicoder<Map<K, V>>
 {
     private final Lexicoder<K> keyLexicoder;
     private final Lexicoder<V> valueLexicoder;
 
     public MapLexicoder(
-            Lexicoder<K> keyLexicoder,
-            Lexicoder<V> valueLexicoder)
+        Lexicoder<K> keyLexicoder,
+        Lexicoder<V> valueLexicoder)
     {
         this.keyLexicoder = keyLexicoder;
         this.valueLexicoder = valueLexicoder;
