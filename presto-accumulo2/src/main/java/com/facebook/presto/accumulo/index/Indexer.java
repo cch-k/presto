@@ -454,7 +454,7 @@ public class Indexer
     public static String getMetricsTableName(String schema, String table)
     {
         return schema.equals("default") ? table + "_idx_metrics"
-            : schema + '.' + table + "_idx_metrics";
+                : schema + '.' + table + "_idx_metrics";
     }
 
     /**
@@ -536,8 +536,8 @@ public class Indexer
 
             MetricsKey other = (MetricsKey) obj;
             return Objects.equals(this.row, other.row)
-                && Objects.equals(this.family, other.family)
-                && Objects.equals(this.visibility, other.visibility);
+                    && Objects.equals(this.family, other.family)
+                    && Objects.equals(this.visibility, other.visibility);
         }
 
         @Override
@@ -550,10 +550,10 @@ public class Indexer
         public String toString()
         {
             return toStringHelper(this)
-                .add("row", new String(row.array(), UTF_8))
-                .add("family", new String(row.array(), UTF_8))
-                .add("visibility", visibility.toString())
-                .toString();
+                    .add("row", new String(row.array(), UTF_8))
+                    .add("family", new String(row.array(), UTF_8))
+                    .add("visibility", visibility.toString())
+                    .toString();
         }
     }
 }

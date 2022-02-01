@@ -38,7 +38,7 @@ import org.apache.accumulo.minicluster.MiniAccumuloCluster;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
-//import org.testng.annotations.Test;
+import org.testng.annotations.Test;
 
 import java.io.File;
 import java.util.Iterator;
@@ -51,7 +51,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 
-//@Test(singleThreaded = true)
 public class TestIndexer
 {
     private static final LexicoderRowSerializer SERIALIZER = new LexicoderRowSerializer();
@@ -138,7 +137,7 @@ public class TestIndexer
         }
     }
 
-    //    @Test
+    @Test
     public void testMutationIndex()
             throws Exception
     {
@@ -223,7 +222,7 @@ public class TestIndexer
         scan.close();
     }
 
-    //    @Test
+    @Test
     public void testMutationIndexWithVisibilities()
             throws Exception
     {

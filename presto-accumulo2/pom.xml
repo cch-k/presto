@@ -8,8 +8,8 @@
         <version>0.270-SNAPSHOT</version>
     </parent>
 
-    <artifactId>presto-accumulo</artifactId>
-    <description>Presto - Accumulo Connector</description>
+    <artifactId>presto-accumulo2</artifactId>
+    <description>Presto - Accumulo 2 Connector</description>
     <packaging>presto-plugin</packaging>
 
     <properties>
@@ -20,6 +20,18 @@
     </properties>
 
     <dependencies>
+        <dependency>
+            <groupId>com.facebook.presto</groupId>
+            <artifactId>presto-accumulo</artifactId>
+            <version>${project.version}</version>
+            <optional>true</optional>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.accumulo</groupId>
+                    <artifactId>accumulo-core</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
         <dependency>
             <groupId>org.apache.accumulo</groupId>
             <artifactId>accumulo-core</artifactId>
@@ -186,13 +198,6 @@
         </dependency>
 
         <dependency>
-            <groupId>com.facebook.presto.hadoop</groupId>
-            <artifactId>hadoop-apache2</artifactId>
-            <version>2.7.4-9</version>
-            <scope>runtime</scope>
-        </dependency>
-
-        <dependency>
             <groupId>org.apache.curator</groupId>
             <artifactId>curator-framework</artifactId>
             <version>${dep.curator.version}</version>
@@ -204,10 +209,12 @@
             <version>${dep.curator.version}</version>
         </dependency>
 
-        <!--        <dependency>-->
-        <!--            <groupId>com.facebook.presto.hadoop</groupId>-->
-        <!--            <artifactId>hadoop-apache2</artifactId>-->
-        <!--        </dependency>-->
+        <dependency>
+            <groupId>com.facebook.presto.hadoop</groupId>
+            <artifactId>hadoop-apache2</artifactId>
+            <version>2.7.4-9</version>
+            <scope>runtime</scope>
+        </dependency>
 
         <dependency>
             <groupId>com.facebook.airlift</groupId>
@@ -355,12 +362,6 @@
         <!-- for testing -->
         <dependency>
             <groupId>com.facebook.presto</groupId>
-            <artifactId>presto-testng-services</artifactId>
-            <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>com.facebook.presto</groupId>
             <artifactId>presto-main</artifactId>
             <scope>test</scope>
         </dependency>
@@ -374,7 +375,7 @@
         <dependency>
             <groupId>org.jetbrains</groupId>
             <artifactId>annotations</artifactId>
-            <version>19.0.0</version>
+            <version>13.0</version>
             <scope>test</scope>
         </dependency>
 
@@ -396,6 +397,179 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>unpack</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>unpack</goal>
+                        </goals>
+                        <configuration>
+                            <skip>false</skip>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>com.facebook.presto</groupId>
+                                    <artifactId>presto-accumulo</artifactId>
+                                    <type>jar</type>
+                                    <overWrite>true</overWrite>
+                                    <outputDirectory>${project.build.directory}/classes</outputDirectory>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-tests</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/test-classes</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>../presto-accumulo/target/test-classes</directory>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.basepom.maven</groupId>
+                <artifactId>duplicate-finder-maven-plugin</artifactId>
+                <version>1.2.1</version>
+                <executions>
+                    <execution>
+                        <id>default</id>
+                        <phase>process-test-classes</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <skip>${air.check.skip-duplicate-finder}</skip>
+                    <failBuildInCaseOfConflict>${air.check.fail-duplicate-finder}</failBuildInCaseOfConflict>
+                    <exceptions>
+                        <exception>
+                            <conflictingDependencies>
+                                <dependency>
+                                    <groupId>com.facebook.airlift</groupId>
+                                    <artifactId>http-server</artifactId>
+                                </dependency>
+                                <dependency>
+                                    <groupId>com.facebook.airlift</groupId>
+                                    <artifactId>http-client</artifactId>
+                                </dependency>
+                            </conflictingDependencies>
+                            <resources>
+                                <resource>jetty-logging.properties</resource>
+                            </resources>
+                        </exception>
+                        <!-- Well done, Apache... -->
+                        <exception>
+                            <conflictingDependencies>
+                                <dependency>
+                                    <groupId>commons-beanutils</groupId>
+                                    <artifactId>commons-beanutils</artifactId>
+                                </dependency>
+                                <dependency>
+                                    <groupId>commons-beanutils</groupId>
+                                    <artifactId>commons-beanutils-core</artifactId>
+                                </dependency>
+                                <dependency>
+                                    <groupId>commons-collections</groupId>
+                                    <artifactId>commons-collections</artifactId>
+                                </dependency>
+                            </conflictingDependencies>
+                            <classes>
+                                <class>org.apache.commons.collections.ArrayStack</class>
+                                <class>org.apache.commons.collections.Buffer</class>
+                                <class>org.apache.commons.collections.BufferUnderflowException</class>
+                                <class>org.apache.commons.collections.FastHashMap</class>
+                            </classes>
+                        </exception>
+                        <exception>
+                            <conflictingDependencies>
+                                <dependency>
+                                    <groupId>commons-beanutils</groupId>
+                                    <artifactId>commons-beanutils</artifactId>
+                                </dependency>
+                                <dependency>
+                                    <groupId>commons-beanutils</groupId>
+                                    <artifactId>commons-beanutils-core</artifactId>
+                                </dependency>
+                            </conflictingDependencies>
+                            <packages>
+                                <package>org.apache.commons.beanutils</package>
+                            </packages>
+                        </exception>
+                        <exception>
+                            <conflictingDependencies>
+                                <dependency>
+                                    <groupId>com.facebook.presto.hadoop</groupId>
+                                    <artifactId>hadoop-apache2</artifactId>
+                                </dependency>
+                                <dependency>
+                                    <groupId>org.apache.hadoop</groupId>
+                                    <artifactId>hadoop-client-api</artifactId>
+                                </dependency>
+                            </conflictingDependencies>
+                            <packages>
+                                <package>org.apache.hadoop</package>
+                            </packages>
+                        </exception>
+                    </exceptions>
+                    <!-- Ruby is hopeless -->
+                    <ignoredDependencies>
+                        <dependency>
+                            <groupId>org.jruby</groupId>
+                            <artifactId>jruby-complete</artifactId>
+                        </dependency>
+                        <dependency>
+                            <groupId>com.facebook.presto</groupId>
+                            <artifactId>presto-accumulo</artifactId>
+                        </dependency>
+                    </ignoredDependencies>
+                    <ignoredResourcePatterns>
+                        <ignoredResourcePattern>.*\.html</ignoredResourcePattern>
+                        <ignoredResourcePattern>META-INF/.*</ignoredResourcePattern>
+                        <ignoredResourcePattern>about_files/.*</ignoredResourcePattern>
+                        <ignoredResourcePattern>plugin\.properties</ignoredResourcePattern>
+                        <ignoredResourcePattern>.*\.java</ignoredResourcePattern>
+                        <ignoredResourcePattern>THIRD-PARTY</ignoredResourcePattern>
+                        <ignoredResourcePattern>mozilla/public-suffix-list.txt</ignoredResourcePattern>
+                        <ignoredResourcePattern>.*\.dtd</ignoredResourcePattern>
+                        <ignoredResourcePattern>common-version-info\.properties</ignoredResourcePattern>
+                        <ignoredResourcePattern>core-default\.xml</ignoredResourcePattern>
+                        <ignoredResourcePattern>mapred-default\.xml</ignoredResourcePattern>
+                        <ignoredResourcePattern>org/apache/hadoop/mapreduce/JobCounter\.properties</ignoredResourcePattern>
+                        <ignoredResourcePattern>org/apache/hadoop/mapreduce/TaskCounter\.properties</ignoredResourcePattern>
+                        <ignoredResourcePattern>jetty-dir\.css</ignoredResourcePattern>
+                        <ignoredResourcePattern>org.apache.hadoop.application-classloader\.properties</ignoredResourcePattern>
+                        <ignoredResourcePattern>org/apache/hadoop/mapreduce/FileSystemCounter\.properties</ignoredResourcePattern>
+                        <ignoredResourcePattern>org/apache/hadoop/mapreduce/lib/input/FileInputFormatCounter\.properties</ignoredResourcePattern>
+                        <ignoredResourcePattern>org/apache/hadoop/mapreduce/lib/output/FileOutputFormatCounter\.properties</ignoredResourcePattern>
+                    </ignoredResourcePatterns>
+                    <ignoredClassPatterns>
+                        <ignoredClassPattern>module-info</ignoredClassPattern>
+                    </ignoredClassPatterns>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 
     <profiles>
         <profile>
