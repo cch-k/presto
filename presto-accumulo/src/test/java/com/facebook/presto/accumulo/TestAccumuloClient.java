@@ -24,7 +24,7 @@ import com.facebook.presto.spi.ConnectorTableMetadata;
 import com.facebook.presto.spi.SchemaTableName;
 import com.google.common.collect.ImmutableList;
 import org.apache.accumulo.core.client.Connector;
-import org.testng.annotations.Test;
+//import org.testng.annotations.Test;
 
 import java.util.HashMap;
 import java.util.List;
