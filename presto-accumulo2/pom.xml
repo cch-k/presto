@@ -24,7 +24,6 @@
             <groupId>com.facebook.presto</groupId>
             <artifactId>presto-accumulo</artifactId>
             <version>${project.version}</version>
-            <optional>true</optional>
             <exclusions>
                 <exclusion>
                     <groupId>org.apache.accumulo</groupId>
