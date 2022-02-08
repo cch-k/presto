@@ -176,6 +176,7 @@
         <module>presto-google-sheets</module>
         <module>presto-hive-function-namespace</module>
         <module>presto-delta</module>
+        <module>presto-accumulo2</module>
     </modules>
 
     <dependencyManagement>
