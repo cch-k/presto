@@ -9,7 +9,7 @@ env:
   MAVEN_OPTS: "-Xmx1024M -XX:+ExitOnOutOfMemoryError"
   MAVEN_INSTALL_OPTS: "-Xmx2G -XX:+ExitOnOutOfMemoryError"
   MAVEN_FAST_INSTALL: "-B -V -T C1 -DskipTests -Dair.check.skip-all -Dmaven.javadoc.skip=true"
-  MAVEN_TEST: "-B -Dair.check.skip-all -Dmaven.javadoc.skip=true -DLogTestDurationListener.enabled=true --fail-at-end"
+  MAVEN_TEST: "-B -Dair.check.skip-all -Dmaven.javadoc.skip=true -DLogTestDurationListener.enabled=true "
   RETRY: .github/bin/retry
 
 jobs:

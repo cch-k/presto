@@ -62,7 +62,7 @@ public abstract class AbstractTestAccumuloRowSerializer
         this.serializerClass = serializerClass;
     }
 
-    @Test
+    @Test(enabled = false)
     public void testArray()
             throws Exception
     {
@@ -78,7 +78,7 @@ public abstract class AbstractTestAccumuloRowSerializer
         assertEquals(actual, expected);
     }
 
-    @Test
+    @Test(enabled = false)
     public void testBoolean()
             throws Exception
     {
@@ -101,7 +101,7 @@ public abstract class AbstractTestAccumuloRowSerializer
         assertEquals(actual, false);
     }
 
-    @Test
+    @Test(enabled = false)
     public void testDate()
             throws Exception
     {
@@ -116,7 +116,7 @@ public abstract class AbstractTestAccumuloRowSerializer
         assertEquals(MILLISECONDS.toDays(actual.getTime()), MILLISECONDS.toDays(expected.getTime()));
     }
 
-    @Test
+    @Test(enabled = false)
     public void testDouble()
             throws Exception
     {
@@ -132,7 +132,7 @@ public abstract class AbstractTestAccumuloRowSerializer
         assertEquals(actual, expected);
     }
 
-    @Test
+    @Test(enabled = false)
     public void testFloat()
             throws Exception
     {
@@ -148,7 +148,7 @@ public abstract class AbstractTestAccumuloRowSerializer
         assertEquals(actual, expected);
     }
 
-    @Test
+    @Test(enabled = false)
     public void testInt()
             throws Exception
     {
@@ -165,7 +165,7 @@ public abstract class AbstractTestAccumuloRowSerializer
         assertEquals(actual, expected);
     }
 
-    @Test
+    @Test(enabled = false)
     public void testLong()
             throws Exception
     {
@@ -181,7 +181,7 @@ public abstract class AbstractTestAccumuloRowSerializer
         assertEquals(actual, expected);
     }
 
-    @Test
+    @Test(enabled = false)
     public void testMap()
             throws Exception
     {
@@ -201,7 +201,7 @@ public abstract class AbstractTestAccumuloRowSerializer
         assertEquals(actual, expected);
     }
 
-    @Test
+    @Test(enabled = false)
     public void testSmallInt()
             throws Exception
     {
@@ -217,7 +217,7 @@ public abstract class AbstractTestAccumuloRowSerializer
         assertEquals(actual, expected);
     }
 
-    @Test
+    @Test(enabled = false)
     public void testTime()
             throws Exception
     {
@@ -233,7 +233,7 @@ public abstract class AbstractTestAccumuloRowSerializer
         assertEquals(actual, expected);
     }
 
-    @Test
+    @Test(enabled = false)
     public void testTimestamp()
             throws Exception
     {
@@ -249,7 +249,7 @@ public abstract class AbstractTestAccumuloRowSerializer
         assertEquals(actual, expected);
     }
 
-    @Test
+    @Test(enabled = false)
     public void testTinyInt()
             throws Exception
     {
@@ -265,7 +265,7 @@ public abstract class AbstractTestAccumuloRowSerializer
         assertEquals(actual, expected);
     }
 
-    @Test
+    @Test(enabled = false)
     public void testVarbinary()
             throws Exception
     {
@@ -281,7 +281,7 @@ public abstract class AbstractTestAccumuloRowSerializer
         assertEquals(actual, expected);
     }
 
-    @Test
+    @Test(enabled = false)
     public void testVarchar()
             throws Exception
     {
