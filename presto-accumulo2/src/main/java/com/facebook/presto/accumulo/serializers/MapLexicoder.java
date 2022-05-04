@@ -31,43 +31,43 @@ import static org.apache.accumulo.core.clientImpl.lexicoder.ByteUtils.unescape;
  * @param <V> Value data type
  */
 public class MapLexicoder<K, V>
-    implements Lexicoder<Map<K, V>>
+        implements Lexicoder<Map<K, V>>
 {
-  private final Lexicoder<K> keyLexicoder;
-  private final Lexicoder<V> valueLexicoder;
+    private final Lexicoder<K> keyLexicoder;
+    private final Lexicoder<V> valueLexicoder;
 
-  public MapLexicoder(
-      Lexicoder<K> keyLexicoder,
-      Lexicoder<V> valueLexicoder)
-  {
-    this.keyLexicoder = keyLexicoder;
-    this.valueLexicoder = valueLexicoder;
-  }
-
-  @Override
-  public byte[] encode(Map<K, V> v)
-  {
-    byte[][] elements = new byte[v.size() * 2][];
-    int index = 0;
-    for (Entry<K, V> entry : v.entrySet()) {
-      elements[index++] = escape(keyLexicoder.encode(entry.getKey()));
-      elements[index++] = escape(valueLexicoder.encode(entry.getValue()));
+    public MapLexicoder(
+            Lexicoder<K> keyLexicoder,
+            Lexicoder<V> valueLexicoder)
+    {
+        this.keyLexicoder = keyLexicoder;
+        this.valueLexicoder = valueLexicoder;
     }
 
-    return concat(elements);
-  }
+    @Override
+    public byte[] encode(Map<K, V> v)
+    {
+        byte[][] elements = new byte[v.size() * 2][];
+        int index = 0;
+        for (Entry<K, V> entry : v.entrySet()) {
+            elements[index++] = escape(keyLexicoder.encode(entry.getKey()));
+            elements[index++] = escape(valueLexicoder.encode(entry.getValue()));
+        }
 
-  @Override
-  public Map<K, V> decode(byte[] b)
-  {
-    byte[][] escapedElements = split(b);
-    Map<K, V> decodedMap = new HashMap<>();
-    for (int i = 0; i < escapedElements.length; i += 2) {
-      K key = keyLexicoder.decode(unescape(escapedElements[i]));
-      V value = valueLexicoder.decode(unescape(escapedElements[i + 1]));
-      decodedMap.put(key, value);
+        return concat(elements);
     }
 
-    return decodedMap;
-  }
+    @Override
+    public Map<K, V> decode(byte[] b)
+    {
+        byte[][] escapedElements = split(b);
+        Map<K, V> decodedMap = new HashMap<>();
+        for (int i = 0; i < escapedElements.length; i += 2) {
+            K key = keyLexicoder.decode(unescape(escapedElements[i]));
+            V value = valueLexicoder.decode(unescape(escapedElements[i + 1]));
+            decodedMap.put(key, value);
+        }
+
+        return decodedMap;
+    }
 }
