@@ -25,28 +25,28 @@ import static java.lang.management.ManagementFactory.getRuntimeMXBean;
 
 public final class MiniAccumuloConfigUtil
 {
-    private MiniAccumuloConfigUtil() {}
+  private MiniAccumuloConfigUtil() {}
 
-    /**
-     * MiniAccumuloClusterImpl will build the class path itself if not set,
-     * but the code fails on Java 9 due to assumptions about URLClassLoader.
-     */
-    public static void setConfigClassPath(MiniAccumuloConfig config)
-    {
-        List<String> items = Splitter.on(File.pathSeparatorChar)
-                .splitToList(getRuntimeMXBean().getClassPath());
-        getConfigImpl(config).setClasspathItems(items.toArray(new String[0]));
-    }
+  /**
+   * MiniAccumuloClusterImpl will build the class path itself if not set,
+   * but the code fails on Java 9 due to assumptions about URLClassLoader.
+   */
+  public static void setConfigClassPath(MiniAccumuloConfig config)
+  {
+    List<String> items = Splitter.on(File.pathSeparatorChar)
+        .splitToList(getRuntimeMXBean().getClassPath());
+    getConfigImpl(config).setClasspathItems(items.toArray(new String[0]));
+  }
 
-    private static MiniAccumuloConfigImpl getConfigImpl(MiniAccumuloConfig config)
-    {
-        try {
-            Field field = MiniAccumuloConfig.class.getDeclaredField("impl");
-            field.setAccessible(true);
-            return (MiniAccumuloConfigImpl) field.get(config);
-        }
-        catch (ReflectiveOperationException e) {
-            throw new AssertionError(e);
-        }
+  private static MiniAccumuloConfigImpl getConfigImpl(MiniAccumuloConfig config)
+  {
+    try {
+      Field field = MiniAccumuloConfig.class.getDeclaredField("impl");
+      field.setAccessible(true);
+      return (MiniAccumuloConfigImpl) field.get(config);
     }
+    catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
+  }
 }
