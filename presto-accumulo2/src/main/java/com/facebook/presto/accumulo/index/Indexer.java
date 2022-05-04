@@ -73,8 +73,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
 
 /**
- * This utility class assists the Presto connector, and external applications,
- * in populating the index table and metrics table for Accumulo-backed Presto tables.
+ * This utility class assists the Presto connector, and external applications, in populating the
+ * index table and metrics table for Accumulo-backed Presto tables.
  * <p>
  * This class is totally not thread safe.
  * <p>
@@ -101,14 +101,16 @@ import static java.util.Objects.requireNonNull;
  * </code>
  * </pre>
  */
-@NotThreadSafe
-public class Indexer
+
+@NotThreadSafe public class Indexer
         implements Closeable
 {
     public static final ByteBuffer METRICS_TABLE_ROW_ID = wrap("___METRICS_TABLE___".getBytes(UTF_8));
     public static final ByteBuffer METRICS_TABLE_ROWS_CF = wrap("___rows___".getBytes(UTF_8));
-    public static final MetricsKey METRICS_TABLE_ROW_COUNT = new MetricsKey(METRICS_TABLE_ROW_ID, METRICS_TABLE_ROWS_CF);
-    public static final ByteBuffer METRICS_TABLE_FIRST_ROW_CQ = wrap("___first_row___".getBytes(UTF_8));
+    public static final MetricsKey METRICS_TABLE_ROW_COUNT = new MetricsKey(METRICS_TABLE_ROW_ID,
+            METRICS_TABLE_ROWS_CF);
+    public static final ByteBuffer METRICS_TABLE_FIRST_ROW_CQ = wrap(
+            "___first_row___".getBytes(UTF_8));
     public static final ByteBuffer METRICS_TABLE_LAST_ROW_CQ = wrap("___last_row___".getBytes(UTF_8));
     public static final byte[] CARDINALITY_CQ = "___card___".getBytes(UTF_8);
     public static final Text CARDINALITY_CQ_AS_TEXT = new Text(CARDINALITY_CQ);
@@ -177,7 +179,8 @@ public class Indexer
 
         // If there are no indexed columns, throw an exception
         if (indexColumns.isEmpty()) {
-            throw new PrestoException(NOT_SUPPORTED, "No indexed columns in table metadata. Refusing to index a table with no indexed columns");
+            throw new PrestoException(NOT_SUPPORTED,
+                "No indexed columns in table metadata. Refusing to index a table with no indexed columns");
         }
 
         // Initialize metrics map
@@ -193,8 +196,9 @@ public class Indexer
     /**
      * Index the given mutation, adding mutations to the index and metrics table
      * <p>
-     * Like typical use of a BatchWriter, this method does not flush mutations to the underlying index table.
-     * For higher throughput the modifications to the metrics table are tracked in memory and added to the metrics table when the indexer is flushed or closed.
+     * Like typical use of a BatchWriter, this method does not flush mutations to the underlying index
+     * table. For higher throughput the modifications to the metrics table are tracked in memory and
+     * added to the metrics table when the indexer is flushed or closed.
      *
      * @param mutation Mutation to index
      */
@@ -228,7 +232,8 @@ public class Indexer
                     // Column Family = columnqualifier_columnfamily
                     // Column Qualifier = row ID
                     // Value = empty
-                    ByteBuffer indexFamily = getIndexColumnFamily(columnUpdate.getColumnFamily(), columnUpdate.getColumnQualifier());
+                    ByteBuffer indexFamily = getIndexColumnFamily(columnUpdate.getColumnFamily(),
+                            columnUpdate.getColumnQualifier());
                     Type type = indexColumnTypes.get(family).get(qualifier);
                     ColumnVisibility visibility = new ColumnVisibility(columnUpdate.getColumnVisibility());
 
@@ -237,11 +242,13 @@ public class Indexer
                         Type elementType = Types.getElementType(type);
                         List<?> elements = serializer.decode(type, columnUpdate.getValue());
                         for (Object element : elements) {
-                            addIndexMutation(wrap(serializer.encode(elementType, element)), indexFamily, visibility, mutation.getRow());
+                            addIndexMutation(wrap(serializer.encode(elementType, element)), indexFamily,
+                                    visibility, mutation.getRow());
                         }
                     }
                     else {
-                        addIndexMutation(wrap(columnUpdate.getValue()), indexFamily, visibility, mutation.getRow());
+                        addIndexMutation(wrap(columnUpdate.getValue()), indexFamily, visibility,
+                                mutation.getRow());
                     }
                 }
             }
@@ -255,7 +262,8 @@ public class Indexer
         }
     }
 
-    private void addIndexMutation(ByteBuffer row, ByteBuffer family, ColumnVisibility visibility, byte[] qualifier)
+    private void addIndexMutation(ByteBuffer row, ByteBuffer family, ColumnVisibility visibility,
+            byte[] qualifier)
     {
         // Create the mutation and add it to the batch writer
         Mutation indexMutation = new Mutation(row.array());
@@ -280,8 +288,9 @@ public class Indexer
     }
 
     /**
-     * Flushes all Mutations in the index writer. And all metric mutations to the metrics table.
-     * Note that the metrics table is not updated until this method is explicitly called (or implicitly via close).
+     * Flushes all Mutations in the index writer. And all metric mutations to the metrics table. Note
+     * that the metrics table is not updated until this method is explicitly called (or implicitly via
+     * close).
      */
     public void flush()
     {
@@ -290,7 +299,8 @@ public class Indexer
             indexWriter.flush();
 
             // Write out metrics mutations
-            BatchWriter metricsWriter = connector.createBatchWriter(table.getMetricsTableName(), writerConfig);
+            BatchWriter metricsWriter = connector.createBatchWriter(table.getMetricsTableName(),
+                    writerConfig);
             metricsWriter.addMutations(getMetricsMutations());
             metricsWriter.close();
 
@@ -299,7 +309,8 @@ public class Indexer
             metrics.put(METRICS_TABLE_ROW_COUNT, new AtomicLong(0));
         }
         catch (MutationsRejectedException e) {
-            throw new PrestoException(UNEXPECTED_ACCUMULO_ERROR, "Index mutation was rejected by server on flush", e);
+            throw new PrestoException(UNEXPECTED_ACCUMULO_ERROR,
+                "Index mutation was rejected by server on flush", e);
         }
         catch (TableNotFoundException e) {
             throw new PrestoException(ACCUMULO_TABLE_DNE, "Accumulo table does not exist", e);
@@ -317,7 +328,8 @@ public class Indexer
             indexWriter.close();
         }
         catch (MutationsRejectedException e) {
-            throw new PrestoException(UNEXPECTED_ACCUMULO_ERROR, "Mutation was rejected by server on close", e);
+            throw new PrestoException(UNEXPECTED_ACCUMULO_ERROR,
+                "Mutation was rejected by server on close", e);
         }
     }
 
@@ -332,7 +344,8 @@ public class Indexer
             // Visibility: Inherited from indexed Mutation
             // Value: Cardinality
             Mutation mut = new Mutation(entry.getKey().row.array());
-            mut.put(entry.getKey().family.array(), CARDINALITY_CQ, entry.getKey().visibility, ENCODER.encode(entry.getValue().get()));
+            mut.put(entry.getKey().family.array(), CARDINALITY_CQ, entry.getKey().visibility,
+                    ENCODER.encode(entry.getValue().get()));
 
             // Add to our list of mutations
             mutationBuilder.add(mut);
@@ -346,8 +359,10 @@ public class Indexer
             // Note that if the values on the server side are greater/lesser,
             // the configured iterator will take care of this at scan/compaction time
             Mutation firstLastMutation = new Mutation(METRICS_TABLE_ROW_ID.array());
-            firstLastMutation.put(METRICS_TABLE_ROWS_CF.array(), METRICS_TABLE_FIRST_ROW_CQ.array(), firstRow);
-            firstLastMutation.put(METRICS_TABLE_ROWS_CF.array(), METRICS_TABLE_LAST_ROW_CQ.array(), lastRow);
+            firstLastMutation.put(METRICS_TABLE_ROWS_CF.array(), METRICS_TABLE_FIRST_ROW_CQ.array(),
+                    firstRow);
+            firstLastMutation.put(METRICS_TABLE_ROWS_CF.array(), METRICS_TABLE_LAST_ROW_CQ.array(),
+                    lastRow);
             mutationBuilder.add(firstLastMutation);
         }
 
@@ -355,7 +370,8 @@ public class Indexer
     }
 
     /**
-     * Gets a collection of iterator settings that should be added to the metric table for the given Accumulo table. Don't forget! Please!
+     * Gets a collection of iterator settings that should be added to the metric table for the given
+     * Accumulo table. Don't forget! Please!
      *
      * @param table Table for retrieving metrics iterators, see AccumuloClient#getTable
      * @return Collection of iterator settings
@@ -378,11 +394,14 @@ public class Indexer
         String lastRowColumn = rowsFamily + ":" + new String(METRICS_TABLE_LAST_ROW_CQ.array());
 
         // Summing combiner for cardinality columns
-        IteratorSetting s1 = new IteratorSetting(1, SummingCombiner.class, ImmutableMap.of("columns", cardBuilder.toString(), "type", "STRING"));
+        IteratorSetting s1 = new IteratorSetting(1, SummingCombiner.class,
+                ImmutableMap.of("columns", cardBuilder.toString(), "type", "STRING"));
 
         // Min/Max combiner for the first/last rows of the table
-        IteratorSetting s2 = new IteratorSetting(2, MinByteArrayCombiner.class, ImmutableMap.of("columns", firstRowColumn));
-        IteratorSetting s3 = new IteratorSetting(3, MaxByteArrayCombiner.class, ImmutableMap.of("columns", lastRowColumn));
+        IteratorSetting s2 = new IteratorSetting(2, MinByteArrayCombiner.class,
+                ImmutableMap.of("columns", firstRowColumn));
+        IteratorSetting s3 = new IteratorSetting(3, MaxByteArrayCombiner.class,
+                ImmutableMap.of("columns", lastRowColumn));
 
         return ImmutableList.of(s1, s2, s3);
     }
@@ -390,7 +409,7 @@ public class Indexer
     /**
      * Gets the column family of the index table based on the given column family and qualifier.
      *
-     * @param columnFamily Presto column family
+     * @param columnFamily    Presto column family
      * @param columnQualifier Presto column qualifier
      * @return ByteBuffer of the given index column family
      */
@@ -403,16 +422,19 @@ public class Indexer
      * Gets a set of locality groups that should be added to the index table (not the metrics table).
      *
      * @param table Table for the locality groups, see AccumuloClient#getTable
-     * @return Mapping of locality group to column families in the locality group, 1:1 mapping in
-     * this case
+     * @return Mapping of locality group to column families in the locality group, 1:1 mapping in this
+     * case
      */
     public static Map<String, Set<Text>> getLocalityGroups(AccumuloTable table)
     {
         Map<String, Set<Text>> groups = new HashMap<>();
         // For each indexed column
-        for (AccumuloColumnHandle columnHandle : table.getColumns().stream().filter(AccumuloColumnHandle::isIndexed).collect(Collectors.toList())) {
+        for (AccumuloColumnHandle columnHandle : table.getColumns().stream()
+                .filter(AccumuloColumnHandle::isIndexed).collect(Collectors.toList())) {
             // Create a Text version of the index column family
-            Text indexColumnFamily = new Text(getIndexColumnFamily(columnHandle.getFamily().get().getBytes(UTF_8), columnHandle.getQualifier().get().getBytes(UTF_8)).array());
+            Text indexColumnFamily = new Text(
+                    getIndexColumnFamily(columnHandle.getFamily().get().getBytes(UTF_8),
+                        columnHandle.getQualifier().get().getBytes(UTF_8)).array());
 
             // Add this to the locality groups,
             // it is a 1:1 mapping of locality group to column families
@@ -425,7 +447,7 @@ public class Indexer
      * Gets the fully-qualified index table name for the given table.
      *
      * @param schema Schema name
-     * @param table Table name
+     * @param table  Table name
      * @return Qualified index table name
      */
     public static String getIndexTableName(String schema, String table)
@@ -448,7 +470,7 @@ public class Indexer
      * Gets the fully-qualified index metrics table name for the given table.
      *
      * @param schema Schema name
-     * @param table Table name
+     * @param table  Table name
      * @return Qualified index metrics table name
      */
     public static String getMetricsTableName(String schema, String table)
@@ -468,7 +490,8 @@ public class Indexer
         return getMetricsTableName(tableName.getSchemaName(), tableName.getTableName());
     }
 
-    public static Pair<byte[], byte[]> getMinMaxRowIds(Connector connector, AccumuloTable table, Authorizations auths)
+    public static Pair<byte[], byte[]> getMinMaxRowIds(Connector connector, AccumuloTable table,
+            Authorizations auths)
             throws TableNotFoundException
     {
         Scanner scanner = connector.createScanner(table.getMetricsTableName(), auths);
@@ -537,7 +560,7 @@ public class Indexer
             MetricsKey other = (MetricsKey) obj;
             return Objects.equals(this.row, other.row)
                 && Objects.equals(this.family, other.family)
-                && Objects.equals(this.visibility, other.visibility);
+                  && Objects.equals(this.visibility, other.visibility);
         }
 
         @Override

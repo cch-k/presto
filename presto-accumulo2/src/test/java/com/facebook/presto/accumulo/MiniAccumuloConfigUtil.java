@@ -25,12 +25,14 @@ import static java.lang.management.ManagementFactory.getRuntimeMXBean;
 
 public final class MiniAccumuloConfigUtil
 {
-    private MiniAccumuloConfigUtil() {}
+    private MiniAccumuloConfigUtil()
+    {
+    }
 
-    /**
-     * MiniAccumuloClusterImpl will build the class path itself if not set,
-     * but the code fails on Java 9 due to assumptions about URLClassLoader.
-     */
+  /**
+   * MiniAccumuloClusterImpl will build the class path itself if not set, but the code fails on Java
+   * 9 due to assumptions about URLClassLoader.
+   */
     public static void setConfigClassPath(MiniAccumuloConfig config)
     {
         List<String> items = Splitter.on(File.pathSeparatorChar)
