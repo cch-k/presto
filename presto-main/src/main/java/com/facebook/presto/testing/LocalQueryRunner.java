@@ -72,6 +72,7 @@ import com.facebook.presto.execution.SetSessionTask;
 import com.facebook.presto.execution.StartTransactionTask;
 import com.facebook.presto.execution.TaskManagerConfig;
 import com.facebook.presto.execution.TaskSource;
+import com.facebook.presto.execution.TruncateTableTask;
 import com.facebook.presto.execution.resourceGroups.NoOpResourceGroupManager;
 import com.facebook.presto.execution.scheduler.LegacyNetworkTopology;
 import com.facebook.presto.execution.scheduler.NodeScheduler;
@@ -137,6 +138,8 @@ import com.facebook.presto.spiller.NodeSpillConfig;
 import com.facebook.presto.spiller.PartitioningSpillerFactory;
 import com.facebook.presto.spiller.SpillerFactory;
 import com.facebook.presto.spiller.SpillerStats;
+import com.facebook.presto.spiller.StandaloneSpillerFactory;
+import com.facebook.presto.spiller.TempStorageStandaloneSpillerFactory;
 import com.facebook.presto.split.PageSinkManager;
 import com.facebook.presto.split.PageSourceManager;
 import com.facebook.presto.split.SplitManager;
@@ -189,6 +192,7 @@ import com.facebook.presto.sql.tree.Rollback;
 import com.facebook.presto.sql.tree.SetSession;
 import com.facebook.presto.sql.tree.StartTransaction;
 import com.facebook.presto.sql.tree.Statement;
+import com.facebook.presto.sql.tree.TruncateTable;
 import com.facebook.presto.testing.PageConsumerOperator.PageConsumerOutputFactory;
 import com.facebook.presto.tracing.TracingConfig;
 import com.facebook.presto.transaction.InMemoryTransactionManager;
@@ -239,6 +243,7 @@ import static com.facebook.presto.spi.connector.ConnectorSplitManager.SplitSched
 import static com.facebook.presto.spi.connector.ConnectorSplitManager.SplitSchedulingStrategy.REWINDABLE_GROUPED_SCHEDULING;
 import static com.facebook.presto.spi.connector.ConnectorSplitManager.SplitSchedulingStrategy.UNGROUPED_SCHEDULING;
 import static com.facebook.presto.spi.connector.NotPartitionedPartitionHandle.NOT_PARTITIONED;
+import static com.facebook.presto.sql.ParameterUtils.parameterExtractor;
 import static com.facebook.presto.sql.ParsingUtil.createParsingOptions;
 import static com.facebook.presto.sql.planner.optimizations.PlanNodeSearcher.searchFrom;
 import static com.facebook.presto.sql.testing.TreeAssertions.assertFormattedSql;
@@ -287,6 +292,7 @@ public class LocalQueryRunner
     private final TransactionManager transactionManager;
     private final FileSingleStreamSpillerFactory singleStreamSpillerFactory;
     private final SpillerFactory spillerFactory;
+    private final StandaloneSpillerFactory standaloneSpillerFactory;
     private final PartitioningSpillerFactory partitioningSpillerFactory;
 
     private final PageFunctionCompiler pageFunctionCompiler;
@@ -495,6 +501,7 @@ public class LocalQueryRunner
                 .put(DropFunction.class, new DropFunctionTask(sqlParser))
                 .put(DropTable.class, new DropTableTask())
                 .put(DropView.class, new DropViewTask())
+                .put(TruncateTable.class, new TruncateTableTask())
                 .put(DropMaterializedView.class, new DropMaterializedViewTask())
                 .put(RenameColumn.class, new RenameColumnTask())
                 .put(RenameTable.class, new RenameTableTask())
@@ -511,6 +518,7 @@ public class LocalQueryRunner
         this.singleStreamSpillerFactory = new FileSingleStreamSpillerFactory(blockEncodingManager, spillerStats, featuresConfig, nodeSpillConfig);
         this.partitioningSpillerFactory = new GenericPartitioningSpillerFactory(this.singleStreamSpillerFactory);
         this.spillerFactory = new GenericSpillerFactory(singleStreamSpillerFactory);
+        this.standaloneSpillerFactory = new TempStorageStandaloneSpillerFactory(new TestingTempStorageManager(), blockEncodingManager, nodeSpillConfig, featuresConfig, spillerStats);
     }
 
     public static LocalQueryRunner queryRunnerWithInitialTransaction(Session defaultSession)
@@ -838,7 +846,8 @@ public class LocalQueryRunner
                 jsonCodec(TableCommitContext.class),
                 new RowExpressionDeterminismEvaluator(metadata),
                 new NoOpFragmentResultCacheManager(),
-                new ObjectMapper());
+                new ObjectMapper(),
+                standaloneSpillerFactory);
 
         // plan query
         StageExecutionDescriptor stageExecutionDescriptor = subplan.getFragment().getStageExecutionDescriptor();
@@ -1007,7 +1016,7 @@ public class LocalQueryRunner
                 costCalculator,
                 dataDefinitionTask,
                 distributedPlanChecker);
-        Analyzer analyzer = new Analyzer(session, metadata, sqlParser, accessControl, Optional.of(queryExplainer), preparedQuery.getParameters(), warningCollector);
+        Analyzer analyzer = new Analyzer(session, metadata, sqlParser, accessControl, Optional.of(queryExplainer), preparedQuery.getParameters(), parameterExtractor(preparedQuery.getStatement(), preparedQuery.getParameters()), warningCollector);
 
         LogicalPlanner logicalPlanner = new LogicalPlanner(wrappedStatement instanceof Explain, session, optimizers, singleNodePlanChecker, idAllocator, metadata, sqlParser, statsCalculator, costCalculator, warningCollector);
 

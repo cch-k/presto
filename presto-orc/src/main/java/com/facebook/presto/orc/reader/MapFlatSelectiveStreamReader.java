@@ -23,6 +23,7 @@ import com.facebook.presto.common.block.RunLengthEncodedBlock;
 import com.facebook.presto.common.block.VariableWidthBlockBuilder;
 import com.facebook.presto.common.predicate.TupleDomainFilter;
 import com.facebook.presto.common.type.BigintType;
+import com.facebook.presto.common.type.FixedWidthType;
 import com.facebook.presto.common.type.IntegerType;
 import com.facebook.presto.common.type.MapType;
 import com.facebook.presto.common.type.SmallintType;
@@ -69,6 +70,7 @@ import static com.facebook.presto.orc.metadata.Stream.StreamKind.PRESENT;
 import static com.facebook.presto.orc.reader.SelectiveStreamReaders.initializeOutputPositions;
 import static com.facebook.presto.orc.stream.MissingInputStreamSource.missingStreamSource;
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.ImmutableList.toImmutableList;
@@ -331,7 +333,7 @@ public class MapFlatSelectiveStreamReader
         readOffset = offset + streamPosition;
 
         if (!nonNullsAllowed) {
-            checkState(nullPositionCount == (positionCount - nonNullPositionCount), "nullPositionCount should be equal to postitionCount - nonNullPositionCount");
+            checkState(nullPositionCount == (positionCount - nonNullPositionCount), "nullPositionCount should be equal to positionCount - nonNullPositionCount");
             outputPositionCount = nullPositionCount;
             allNulls = true;
             System.arraycopy(nullPositions, 0, outputPositions, 0, nullPositionCount);
@@ -410,7 +412,7 @@ public class MapFlatSelectiveStreamReader
         presentStream = presentStreamSource.openStream();
 
         for (int i = 0; i < keyCount; i++) {
-            BooleanInputStream inMapStream = requireNonNull(inMapStreamSources.get(i).openStream(), "missing inMapStream at position " + i);
+            BooleanInputStream inMapStream = checkNotNull(inMapStreamSources.get(i).openStream(), "missing inMapStream at position %s", i);
             inMapStreams.add(inMapStream);
         }
 
@@ -477,7 +479,13 @@ public class MapFlatSelectiveStreamReader
         int count = 0;
 
         Type valueType = outputType.getValueType();
-        BlockBuilder valueBlockBuilder = valueType.createBlockBuilder(null, offset);
+        BlockBuilder valueBlockBuilder;
+        if (valueType instanceof FixedWidthType) {
+            valueBlockBuilder = ((FixedWidthType) valueType).createFixedSizeBlockBuilder(offset);
+        }
+        else {
+            valueBlockBuilder = valueType.createBlockBuilder(null, offset);
+        }
 
         int[] valueBlockPositions = new int[keyCount];
 
@@ -502,7 +510,11 @@ public class MapFlatSelectiveStreamReader
             }
         }
 
-        return outputType.createBlockFromKeyValue(outputPositionCount, Optional.ofNullable(includeNulls ? nulls : null), offsets, new DictionaryBlock(keyBlock, keyIds), valueBlockBuilder);
+        return outputType.createBlockFromKeyValue(outputPositionCount,
+                Optional.ofNullable(includeNulls ? nulls : null),
+                offsets,
+                new DictionaryBlock(keyBlock, keyIds),
+                valueBlockBuilder.build());
     }
 
     private static RunLengthEncodedBlock createNullBlock(Type type, int positionCount)
@@ -784,6 +796,9 @@ public class MapFlatSelectiveStreamReader
     public void startRowGroup(InputStreamSources dataStreamSources)
             throws IOException
     {
+        presentStream = null;
+        inMapStreams.clear();
+
         presentStreamSource = dataStreamSources.getInputStreamSource(streamDescriptor, PRESENT, BooleanInputStream.class);
 
         for (int i = 0; i < keyCount; i++) {
@@ -798,9 +813,6 @@ public class MapFlatSelectiveStreamReader
         nestedPositions = ensureCapacity(nestedPositions, keyCount);
         nestedPositionCounts = ensureCapacity(nestedPositionCounts, keyCount);
         inMap = ensureCapacity(inMap, keyCount);
-
-        presentStream = null;
-        inMapStreams.clear();
 
         rowGroupOpen = false;
 

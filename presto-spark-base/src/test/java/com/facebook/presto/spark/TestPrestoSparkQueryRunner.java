@@ -33,8 +33,11 @@ import java.util.stream.Collectors;
 
 import static com.facebook.presto.SystemSessionProperties.JOIN_DISTRIBUTION_TYPE;
 import static com.facebook.presto.SystemSessionProperties.PARTIAL_MERGE_PUSHDOWN_STRATEGY;
+import static com.facebook.presto.SystemSessionProperties.QUERY_MAX_TOTAL_MEMORY_PER_NODE;
 import static com.facebook.presto.spark.PrestoSparkQueryRunner.METASTORE_CONTEXT;
 import static com.facebook.presto.spark.PrestoSparkQueryRunner.createHivePrestoSparkQueryRunner;
+import static com.facebook.presto.spark.PrestoSparkSessionProperties.SPARK_BROADCAST_JOIN_MAX_MEMORY_OVERRIDE;
+import static com.facebook.presto.spark.PrestoSparkSessionProperties.SPARK_RETRY_ON_OUT_OF_MEMORY_BROADCAST_JOIN_ENABLED;
 import static com.facebook.presto.spark.PrestoSparkSessionProperties.SPARK_SPLIT_ASSIGNMENT_BATCH_SIZE;
 import static com.facebook.presto.spark.PrestoSparkSessionProperties.STORAGE_BASED_BROADCAST_JOIN_ENABLED;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.PartialMergePushdownStrategy.PUSH_THROUGH_LOW_MEMORY_OPERATORS;
@@ -893,6 +896,66 @@ public class TestPrestoSparkQueryRunner
     }
 
     @Test
+    public void testStorageBasedBroadcastJoinMaxThreshold()
+    {
+        Session session = Session.builder(getSession())
+                .setSystemProperty(JOIN_DISTRIBUTION_TYPE, "BROADCAST")
+                .setSystemProperty(STORAGE_BASED_BROADCAST_JOIN_ENABLED, "true")
+                .setSystemProperty(QUERY_MAX_TOTAL_MEMORY_PER_NODE, "1MB")
+                .build();
+
+        assertQueryFails(
+                session,
+                "select * from lineitem l join orders o on l.orderkey = o.orderkey",
+                "Query exceeded per-node total memory limit of 1MB \\[Broadcast size: .*MB\\]");
+    }
+
+    @Test
+    public void testStorageBasedBroadcastJoinDeserializedMaxThreshold()
+    {
+        Session session = Session.builder(getSession())
+                .setSystemProperty(JOIN_DISTRIBUTION_TYPE, "BROADCAST")
+                .setSystemProperty(STORAGE_BASED_BROADCAST_JOIN_ENABLED, "true")
+                .setSystemProperty(SPARK_BROADCAST_JOIN_MAX_MEMORY_OVERRIDE, "2MB")
+                .setSystemProperty(QUERY_MAX_TOTAL_MEMORY_PER_NODE, "100MB")
+                .build();
+
+        assertQueryFails(
+                session,
+                "select * from lineitem l join orders o on l.orderkey = o.orderkey",
+                "Query exceeded per-node broadcast memory limit of 2MB \\[Broadcast size: 2.*MB\\]");
+    }
+
+    @Test
+    public void testRetryOnOutOfMemoryBroadcastJoin()
+    {
+        Session session = Session.builder(getSession())
+                .setSystemProperty(JOIN_DISTRIBUTION_TYPE, "BROADCAST")
+                .setSystemProperty(STORAGE_BASED_BROADCAST_JOIN_ENABLED, "true")
+                .setSystemProperty(SPARK_BROADCAST_JOIN_MAX_MEMORY_OVERRIDE, "10B")
+                .setSystemProperty(SPARK_RETRY_ON_OUT_OF_MEMORY_BROADCAST_JOIN_ENABLED, "false")
+                .build();
+
+        // Query should fail with broadcast join OOM
+        assertQueryFails(
+                session,
+                "select * from lineitem l join orders o on l.orderkey = o.orderkey",
+                "Query exceeded per-node broadcast memory limit of 10B \\[Broadcast size: .*MB\\]");
+
+        session = Session.builder(getSession())
+                .setSystemProperty(JOIN_DISTRIBUTION_TYPE, "BROADCAST")
+                .setSystemProperty(STORAGE_BASED_BROADCAST_JOIN_ENABLED, "true")
+                .setSystemProperty(SPARK_BROADCAST_JOIN_MAX_MEMORY_OVERRIDE, "10B")
+                .setSystemProperty(SPARK_RETRY_ON_OUT_OF_MEMORY_BROADCAST_JOIN_ENABLED, "true")
+                .build();
+
+        // Query should succeed since broadcast join will be disabled on retry
+        assertQuery(
+                session,
+                "select * from lineitem l join orders o on l.orderkey = o.orderkey");
+    }
+
+    @Test
     public void testSmileSerialization()
     {
         String query = "SELECT * FROM nation";
@@ -1022,7 +1085,7 @@ public class TestPrestoSparkQueryRunner
         // Grant user
         assertQuerySucceeds("GRANT SELECT,INSERT,DELETE,UPDATE ON hive.hive_test_new.test to user");
         MaterializedResult actual = computeActual("SHOW GRANTS ON TABLE hive.hive_test_new.test");
-        // permissions are in the eigth field
+        // permissions are in the eighth field
         List<String> grants = actual.getMaterializedRows().stream().map(row -> row.getField(7).toString()).collect(Collectors.toList());
         assertEquals(Ordering.natural().sortedCopy(grants), ImmutableList.of("DELETE", "INSERT", "SELECT", "UPDATE"));
 
@@ -1160,7 +1223,7 @@ public class TestPrestoSparkQueryRunner
         assertQuerySucceeds(format("CALL system.create_empty_partition('%s', '%s', ARRAY['orderstatus'], ARRAY['%s'])", "tpch", "test_partition_table", "y"));
         actual = computeActual("SELECT count(*) FROM \"test_partition_table$partitions\"");
 
-        // 2 new paritions added
+        // 2 new partitions added
         assertEquals(actual.getOnlyValue().toString(), "5");
         assertQuerySucceeds("DROP TABLE test_partition_table");
     }

@@ -14,6 +14,7 @@
 package com.facebook.presto.orc.writer;
 
 import com.facebook.presto.common.block.Block;
+import com.facebook.presto.common.type.AbstractVariableWidthType;
 import com.facebook.presto.common.type.Type;
 import com.facebook.presto.orc.ColumnWriterOptions;
 import com.facebook.presto.orc.DwrfDataEncryptor;
@@ -29,7 +30,6 @@ import com.facebook.presto.orc.stream.LongOutputStream;
 import com.facebook.presto.orc.stream.PresentOutputStream;
 import com.facebook.presto.orc.stream.StreamDataOutput;
 import com.google.common.collect.ImmutableList;
-import io.airlift.slice.Slice;
 import io.airlift.units.DataSize;
 import it.unimi.dsi.fastutil.ints.IntArrays;
 import org.openjdk.jol.info.ClassLayout;
@@ -41,6 +41,7 @@ import static com.facebook.presto.orc.OrcEncoding.DWRF;
 import static com.facebook.presto.orc.metadata.ColumnEncoding.ColumnEncodingKind.DICTIONARY;
 import static com.facebook.presto.orc.metadata.ColumnEncoding.ColumnEncodingKind.DICTIONARY_V2;
 import static com.facebook.presto.orc.stream.LongOutputStream.createLengthOutputStream;
+import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
 import static java.lang.Math.toIntExact;
@@ -50,14 +51,15 @@ public class SliceDictionaryColumnWriter
 {
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(SliceDictionaryColumnWriter.class).instanceSize();
     private static final int DIRECT_CONVERSION_CHUNK_MAX_LOGICAL_BYTES = toIntExact(new DataSize(32, MEGABYTE).toBytes());
-    private static final int NULL_INDEX = -1;
+    private static final int EXPECTED_ENTRIES = 1_024;
 
-    private final ByteArrayOutputStream dictionaryDataStream;
-    private final LongOutputStream dictionaryLengthStream;
-    private final SliceDictionaryBuilder dictionary = new SliceDictionaryBuilder(1_024);
+    private final AbstractVariableWidthType type;
+    private ByteArrayOutputStream dictionaryDataStream;
+    private LongOutputStream dictionaryLengthStream;
     private final int stringStatisticsLimitInBytes;
     private final boolean sortDictionaryKeys;
 
+    private SliceDictionaryBuilder dictionary = new SliceDictionaryBuilder(EXPECTED_ENTRIES);
     private StringStatisticsBuilder statisticsBuilder;
     private ColumnEncoding columnEncoding;
     private SliceDirectColumnWriter directColumnWriter;
@@ -71,9 +73,11 @@ public class SliceDictionaryColumnWriter
             MetadataWriter metadataWriter)
     {
         super(column, type, columnWriterOptions, dwrfEncryptor, orcEncoding, metadataWriter);
+        checkArgument(type instanceof AbstractVariableWidthType, "Not an instance of AbstractVariableWidthType");
+        this.type = (AbstractVariableWidthType) type;
         this.dictionaryDataStream = new ByteArrayOutputStream(columnWriterOptions, dwrfEncryptor, Stream.StreamKind.DICTIONARY_DATA);
         this.dictionaryLengthStream = createLengthOutputStream(columnWriterOptions, dwrfEncryptor, orcEncoding);
-        this.stringStatisticsLimitInBytes = toIntExact(columnWriterOptions.getStringStatisticsLimit().toBytes());
+        this.stringStatisticsLimitInBytes = columnWriterOptions.getStringStatisticsLimit();
         this.statisticsBuilder = newStringStatisticsBuilder();
         this.sortDictionaryKeys = columnWriterOptions.isStringDictionarySortingEnabled();
         checkState(sortDictionaryKeys || orcEncoding == DWRF, "Disabling sort is only supported in DWRF format");
@@ -96,20 +100,15 @@ public class SliceDictionaryColumnWriter
     @Override
     protected boolean tryConvertRowGroupToDirect(int dictionaryIndexCount, int[] dictionaryIndexes, int maxDirectBytes)
     {
-        for (int offset = 0; offset < dictionaryIndexCount; offset++) {
-            directColumnWriter.writePresentValue(dictionaryIndexes[offset] != NULL_INDEX);
-        }
         long size = 0;
         for (int offset = 0; offset < dictionaryIndexCount; offset++) {
             int dictionaryIndex = dictionaryIndexes[offset];
-            if (dictionaryIndex != NULL_INDEX) {
-                size += writeDirectEntry(dictionaryIndex);
-                if (size > DIRECT_CONVERSION_CHUNK_MAX_LOGICAL_BYTES) {
-                    if (directColumnWriter.getBufferedBytes() > maxDirectBytes) {
-                        return false;
-                    }
-                    size = 0;
+            size += writeDirectEntry(dictionaryIndex);
+            if (size > DIRECT_CONVERSION_CHUNK_MAX_LOGICAL_BYTES) {
+                if (directColumnWriter.getBufferedBytes() > maxDirectBytes) {
+                    return false;
                 }
+                size = 0;
             }
         }
 
@@ -119,20 +118,15 @@ public class SliceDictionaryColumnWriter
     @Override
     protected boolean tryConvertRowGroupToDirect(int dictionaryIndexCount, short[] dictionaryIndexes, int maxDirectBytes)
     {
-        for (int offset = 0; offset < dictionaryIndexCount; offset++) {
-            directColumnWriter.writePresentValue(dictionaryIndexes[offset] != NULL_INDEX);
-        }
         long size = 0;
         for (int offset = 0; offset < dictionaryIndexCount; offset++) {
             int dictionaryIndex = dictionaryIndexes[offset];
-            if (dictionaryIndex != NULL_INDEX) {
-                size += writeDirectEntry(dictionaryIndex);
-                if (size > DIRECT_CONVERSION_CHUNK_MAX_LOGICAL_BYTES) {
-                    if (directColumnWriter.getBufferedBytes() > maxDirectBytes) {
-                        return false;
-                    }
-                    size = 0;
+            size += writeDirectEntry(dictionaryIndex);
+            if (size > DIRECT_CONVERSION_CHUNK_MAX_LOGICAL_BYTES) {
+                if (directColumnWriter.getBufferedBytes() > maxDirectBytes) {
+                    return false;
                 }
+                size = 0;
             }
         }
 
@@ -142,20 +136,15 @@ public class SliceDictionaryColumnWriter
     @Override
     protected boolean tryConvertRowGroupToDirect(int dictionaryIndexCount, byte[] dictionaryIndexes, int maxDirectBytes)
     {
-        for (int offset = 0; offset < dictionaryIndexCount; offset++) {
-            directColumnWriter.writePresentValue(dictionaryIndexes[offset] != NULL_INDEX);
-        }
         long size = 0;
         for (int offset = 0; offset < dictionaryIndexCount; offset++) {
             int dictionaryIndex = dictionaryIndexes[offset];
-            if (dictionaryIndex != NULL_INDEX) {
-                size += writeDirectEntry(dictionaryIndex);
-                if (size > DIRECT_CONVERSION_CHUNK_MAX_LOGICAL_BYTES) {
-                    if (directColumnWriter.getBufferedBytes() > maxDirectBytes) {
-                        return false;
-                    }
-                    size = 0;
+            size += writeDirectEntry(dictionaryIndex);
+            if (size > DIRECT_CONVERSION_CHUNK_MAX_LOGICAL_BYTES) {
+                if (directColumnWriter.getBufferedBytes() > maxDirectBytes) {
+                    return false;
                 }
+                size = 0;
             }
         }
 
@@ -164,11 +153,7 @@ public class SliceDictionaryColumnWriter
 
     private long writeDirectEntry(int dictionaryIndex)
     {
-        int length = dictionary.getSliceLength(dictionaryIndex);
-        Slice rawSlice = dictionary.getRawSlice(dictionaryIndex);
-        int rawSliceOffset = dictionary.getRawSliceOffset(dictionaryIndex);
-        directColumnWriter.writeSlice(rawSlice, rawSliceOffset, length);
-        return length;
+        return directColumnWriter.writeBlockPosition(dictionary.getBlock(), dictionaryIndex);
     }
 
     @Override
@@ -184,21 +169,12 @@ public class SliceDictionaryColumnWriter
         int nonNullValueCount = 0;
         long rawBytes = 0;
         for (int position = 0; position < block.getPositionCount(); position++) {
-            int index;
             if (!block.isNull(position)) {
-                index = dictionary.putIfAbsent(block, position);
-
-                // todo min/max statistics only need to be updated if value was not already in the dictionary, but non-null count does
-                Slice slice = type.getSlice(block, position);
-                statisticsBuilder.addValue(slice, 0, slice.length());
-
+                rowGroupIndexes[rowGroupOffset++] = dictionary.putIfAbsent(block, position);
+                statisticsBuilder.addValue(block, position);
                 rawBytes += block.getSliceLength(position);
                 nonNullValueCount++;
             }
-            else {
-                index = NULL_INDEX;
-            }
-            rowGroupIndexes[rowGroupOffset++] = index;
         }
         long rawBytesIncludingNulls = rawBytes + (block.getPositionCount() - nonNullValueCount) * NULL_SIZE;
         return new BlockStatistics(nonNullValueCount, rawBytes, rawBytesIncludingNulls);
@@ -207,9 +183,7 @@ public class SliceDictionaryColumnWriter
     @Override
     protected void closeDictionary()
     {
-        // free the dictionary memory
-        dictionary.clear();
-
+        dictionary = null;
         dictionaryDataStream.close();
         dictionaryLengthStream.close();
     }
@@ -231,6 +205,18 @@ public class SliceDictionaryColumnWriter
 
         IntArrays.quickSort(sortedPositions, 0, sortedPositions.length, dictionary::compareIndex);
         return sortedPositions;
+    }
+
+    @Override
+    protected void beginDataRowGroup()
+    {
+        directColumnWriter.beginDataRowGroup();
+    }
+
+    @Override
+    protected void movePresentStreamToDirectWriter(PresentOutputStream presentStream)
+    {
+        directColumnWriter.updatePresentStream(presentStream);
     }
 
     @Override
@@ -271,106 +257,78 @@ public class SliceDictionaryColumnWriter
     {
         int length = dictionary.getSliceLength(dictionaryIndex);
         dictionaryLengthStream.writeLong(length);
-        Slice rawSlice = dictionary.getRawSlice(dictionaryIndex);
-        int rawSliceOffset = dictionary.getRawSliceOffset(dictionaryIndex);
-        dictionaryDataStream.writeSlice(rawSlice, rawSliceOffset, length);
+        dictionaryDataStream.writeBlockPosition(dictionary.getBlock(), dictionaryIndex, 0, length);
     }
 
     @Override
-    protected void writePresentAndDataStreams(
+    protected void writeDataStreams(
             int rowGroupValueCount,
             int[] rowGroupIndexes,
             Optional<int[]> optionalSortedIndex,
-            PresentOutputStream presentStream,
             LongOutputStream dataStream)
     {
         checkState(optionalSortedIndex.isPresent() == sortDictionaryKeys, "SortedIndex and sortDictionaryKeys(%s) are inconsistent", sortDictionaryKeys);
-        for (int position = 0; position < rowGroupValueCount; position++) {
-            presentStream.writeBoolean(rowGroupIndexes[position] != NULL_INDEX);
-        }
 
         if (sortDictionaryKeys) {
             int[] sortedIndexes = optionalSortedIndex.get();
             for (int position = 0; position < rowGroupValueCount; position++) {
                 int originalDictionaryIndex = rowGroupIndexes[position];
-                if (originalDictionaryIndex != NULL_INDEX) {
-                    int sortedIndex = sortedIndexes[originalDictionaryIndex];
-                    writeIndex(dataStream, position, sortedIndex);
-                }
+                int sortedIndex = sortedIndexes[originalDictionaryIndex];
+                writeIndex(dataStream, position, sortedIndex);
             }
         }
         else {
             for (int position = 0; position < rowGroupValueCount; position++) {
                 int dictionaryIndex = rowGroupIndexes[position];
-                if (dictionaryIndex != NULL_INDEX) {
-                    writeIndex(dataStream, position, dictionaryIndex);
-                }
+                writeIndex(dataStream, position, dictionaryIndex);
             }
         }
     }
 
     @Override
-    protected void writePresentAndDataStreams(
+    protected void writeDataStreams(
             int rowGroupValueCount,
             byte[] rowGroupIndexes,
             Optional<int[]> optionalSortedIndex,
-            PresentOutputStream presentStream,
             LongOutputStream dataStream)
     {
         checkState(optionalSortedIndex.isPresent() == sortDictionaryKeys, "SortedIndex and sortDictionaryKeys(%s) are inconsistent", sortDictionaryKeys);
-        for (int position = 0; position < rowGroupValueCount; position++) {
-            presentStream.writeBoolean(rowGroupIndexes[position] != NULL_INDEX);
-        }
-
         if (sortDictionaryKeys) {
             int[] sortedIndexes = optionalSortedIndex.get();
             for (int position = 0; position < rowGroupValueCount; position++) {
                 int originalDictionaryIndex = rowGroupIndexes[position];
-                if (originalDictionaryIndex != NULL_INDEX) {
-                    int sortedIndex = sortedIndexes[originalDictionaryIndex];
-                    writeIndex(dataStream, position, sortedIndex);
-                }
+                int sortedIndex = sortedIndexes[originalDictionaryIndex];
+                writeIndex(dataStream, position, sortedIndex);
             }
         }
         else {
             for (int position = 0; position < rowGroupValueCount; position++) {
                 int dictionaryIndex = rowGroupIndexes[position];
-                if (dictionaryIndex != NULL_INDEX) {
-                    writeIndex(dataStream, position, dictionaryIndex);
-                }
+                writeIndex(dataStream, position, dictionaryIndex);
             }
         }
     }
 
     @Override
-    protected void writePresentAndDataStreams(
+    protected void writeDataStreams(
             int rowGroupValueCount,
             short[] rowGroupIndexes,
             Optional<int[]> optionalSortedIndex,
-            PresentOutputStream presentStream,
             LongOutputStream dataStream)
     {
         checkState(optionalSortedIndex.isPresent() == sortDictionaryKeys, "SortedIndex and sortDictionaryKeys(%s) are inconsistent", sortDictionaryKeys);
-        for (int position = 0; position < rowGroupValueCount; position++) {
-            presentStream.writeBoolean(rowGroupIndexes[position] != NULL_INDEX);
-        }
-
         if (sortDictionaryKeys) {
             int[] sortedIndexes = optionalSortedIndex.get();
             for (int position = 0; position < rowGroupValueCount; position++) {
                 int originalDictionaryIndex = rowGroupIndexes[position];
-                if (originalDictionaryIndex != NULL_INDEX) {
-                    int sortedIndex = sortedIndexes[originalDictionaryIndex];
-                    writeIndex(dataStream, position, sortedIndex);
-                }
+                int sortedIndex = sortedIndexes[originalDictionaryIndex];
+                writeIndex(dataStream, position, sortedIndex);
             }
         }
         else {
             for (int position = 0; position < rowGroupValueCount; position++) {
                 int dictionaryIndex = rowGroupIndexes[position];
-                if (dictionaryIndex != NULL_INDEX) {
-                    writeIndex(dataStream, position, dictionaryIndex);
-                }
+                writeIndex(dataStream, position, dictionaryIndex);
             }
         }
     }
@@ -397,9 +355,9 @@ public class SliceDictionaryColumnWriter
     protected void resetDictionary()
     {
         columnEncoding = null;
-        dictionary.clear();
-        dictionaryDataStream.reset();
-        dictionaryLengthStream.reset();
+        dictionary = new SliceDictionaryBuilder(EXPECTED_ENTRIES);
+        dictionaryDataStream = new ByteArrayOutputStream(columnWriterOptions, dwrfEncryptor, Stream.StreamKind.DICTIONARY_DATA);
+        dictionaryLengthStream = createLengthOutputStream(columnWriterOptions, dwrfEncryptor, orcEncoding);
         statisticsBuilder = newStringStatisticsBuilder();
     }
 

@@ -74,6 +74,7 @@ import com.facebook.presto.sql.planner.plan.IndexSourceNode;
 import com.facebook.presto.sql.planner.plan.InternalPlanVisitor;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.plan.LateralJoinNode;
+import com.facebook.presto.sql.planner.plan.MergeJoinNode;
 import com.facebook.presto.sql.planner.plan.MetadataDeleteNode;
 import com.facebook.presto.sql.planner.plan.OutputNode;
 import com.facebook.presto.sql.planner.plan.PlanFragmentId;
@@ -570,6 +571,23 @@ public class PlanPrinter
         }
 
         @Override
+        public Void visitMergeJoin(MergeJoinNode node, Void context)
+        {
+            List<String> joinExpressions = new ArrayList<>();
+            for (JoinNode.EquiJoinClause clause : node.getCriteria()) {
+                joinExpressions.add(JoinNodeUtils.toExpression(clause).toString());
+            }
+            node.getFilter().map(formatter::apply).ifPresent(joinExpressions::add);
+
+            addNode(node,
+                    "MergeJoin",
+                    format("[type: %s], [%s]%s", node.getType().getJoinLabel(), Joiner.on(" AND ").join(joinExpressions), formatHash(node.getLeftHashVariable(), node.getRightHashVariable())));
+            node.getLeft().accept(this, context);
+            node.getRight().accept(this, context);
+            return null;
+        }
+
+        @Override
         public Void visitLimit(LimitNode node, Void context)
         {
             addNode(node,
@@ -593,6 +611,9 @@ public class PlanPrinter
             String type = "";
             if (node.getStep() != AggregationNode.Step.SINGLE) {
                 type = format("(%s)", node.getStep().toString());
+            }
+            if (node.isSegmentedAggregationEligible()) {
+                type = format("%s(SEGMENTED, %s)", type, node.getPreGroupedVariables());
             }
             if (node.isStreamable()) {
                 type = format("%s(STREAMING)", type);
@@ -919,7 +940,7 @@ public class PlanPrinter
 
             TupleDomain<ColumnHandle> predicate = node.getCurrentConstraint();
             if (predicate == null) {
-                // This happens when printing the plan framgnet on worker for debug purpose
+                // This happens when printing the plan fragment on worker for debug purpose
                 nodeOutput.appendDetailsLine(":: PREDICATE INFORMATION UNAVAILABLE");
             }
             else if (predicate.isNone()) {
@@ -1301,7 +1322,7 @@ public class PlanPrinter
         }
 
         try {
-            FunctionHandle cast = functionAndTypeManager.lookupCast(CAST, type.getTypeSignature(), VARCHAR.getTypeSignature());
+            FunctionHandle cast = functionAndTypeManager.lookupCast(CAST, type, VARCHAR);
             Slice coerced = (Slice) new InterpretedFunctionInvoker(functionAndTypeManager).invoke(cast, session.getSqlFunctionProperties(), value);
             return "\"" + coerced.toStringUtf8().replace("\"", "\\\"") + "\"";
         }

@@ -493,6 +493,7 @@ public class TestDecryption
                         MAX_BLOCK_SIZE,
                         false,
                         false,
+                        false,
                         false),
                 false,
                 new DwrfEncryptionProvider(new UnsupportedEncryptionLibrary(), new TestingPlainKeyEncryptionLibrary()),
@@ -619,7 +620,7 @@ public class TestDecryption
             throws Exception
     {
         try (TempFile tempFile = new TempFile()) {
-            writeOrcColumnsPresto(tempFile.getFile(), OrcTester.Format.DWRF, ZSTD, dwrfWriterEncryption, types, writtenValues, new OrcWriterStats());
+            writeOrcColumnsPresto(tempFile.getFile(), OrcTester.Format.DWRF, ZSTD, dwrfWriterEncryption, types, writtenValues, new NoOpOrcWriterStats());
 
             assertFileContentsPresto(
                     types,

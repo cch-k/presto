@@ -32,6 +32,7 @@ import org.apache.parquet.hadoop.metadata.ColumnChunkMetaData;
 import org.apache.parquet.hadoop.metadata.ColumnPath;
 import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 import org.apache.parquet.hadoop.metadata.ParquetMetadata;
+import org.apache.parquet.internal.hadoop.metadata.IndexReference;
 import org.apache.parquet.schema.MessageType;
 import org.apache.parquet.schema.OriginalType;
 import org.apache.parquet.schema.PrimitiveType;
@@ -66,8 +67,15 @@ public final class MetadataReader
     private static final int POST_SCRIPT_SIZE = Integer.BYTES + MAGIC.length();
     private static final int EXPECTED_FOOTER_SIZE = 16 * 1024;
     private static final ParquetMetadataConverter PARQUET_METADATA_CONVERTER = new ParquetMetadataConverter();
+    private static final long MODIFICATION_TIME_NOT_SET = 0L;
 
     public static ParquetFileMetadata readFooter(ParquetDataSource parquetDataSource, long fileSize)
+            throws IOException
+    {
+        return readFooter(parquetDataSource, fileSize, MODIFICATION_TIME_NOT_SET);
+    }
+
+    public static ParquetFileMetadata readFooter(ParquetDataSource parquetDataSource, long fileSize, long modificationTime)
             throws IOException
     {
         // Parquet File Layout:
@@ -144,6 +152,8 @@ public final class MetadataReader
                             metaData.num_values,
                             metaData.total_compressed_size,
                             metaData.total_uncompressed_size);
+                    column.setColumnIndexReference(toColumnIndexReference(columnChunk));
+                    column.setOffsetIndexReference(toOffsetIndexReference(columnChunk));
                     blockMetaData.addColumn(column);
                 }
                 blockMetaData.setPath(filePath);
@@ -159,7 +169,7 @@ public final class MetadataReader
             }
         }
         ParquetMetadata parquetMetadata = new ParquetMetadata(new org.apache.parquet.hadoop.metadata.FileMetaData(messageType, keyValueMetaData, fileMetaData.getCreated_by()), blocks);
-        return new ParquetFileMetadata(parquetMetadata, toIntExact(metadataLength));
+        return new ParquetFileMetadata(parquetMetadata, toIntExact(metadataLength), modificationTime);
     }
 
     private static MessageType readParquetSchema(List<SchemaElement> schema)
@@ -303,9 +313,29 @@ public final class MetadataReader
     }
 
     @Override
-    public ParquetFileMetadata getParquetMetadata(ParquetDataSource parquetDataSource, long fileSize, boolean cacheable)
+    public ParquetFileMetadata getParquetMetadata(
+            ParquetDataSource parquetDataSource,
+            long fileSize,
+            boolean cacheable,
+            long modificationTime)
             throws IOException
     {
-        return readFooter(parquetDataSource, fileSize);
+        return readFooter(parquetDataSource, fileSize, modificationTime);
+    }
+
+    private static IndexReference toColumnIndexReference(ColumnChunk columnChunk)
+    {
+        if (columnChunk.isSetColumn_index_offset() && columnChunk.isSetColumn_index_length()) {
+            return new IndexReference(columnChunk.getColumn_index_offset(), columnChunk.getColumn_index_length());
+        }
+        return null;
+    }
+
+    private static IndexReference toOffsetIndexReference(ColumnChunk columnChunk)
+    {
+        if (columnChunk.isSetOffset_index_offset() && columnChunk.isSetOffset_index_length()) {
+            return new IndexReference(columnChunk.getOffset_index_offset(), columnChunk.getOffset_index_length());
+        }
+        return null;
     }
 }

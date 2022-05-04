@@ -52,7 +52,7 @@ import com.facebook.presto.sql.planner.iterative.rule.MergeLimitWithTopN;
 import com.facebook.presto.sql.planner.iterative.rule.MergeLimits;
 import com.facebook.presto.sql.planner.iterative.rule.MultipleDistinctAggregationToMarkDistinct;
 import com.facebook.presto.sql.planner.iterative.rule.PickTableLayout;
-import com.facebook.presto.sql.planner.iterative.rule.PlanRemotePojections;
+import com.facebook.presto.sql.planner.iterative.rule.PlanRemoteProjections;
 import com.facebook.presto.sql.planner.iterative.rule.PruneAggregationColumns;
 import com.facebook.presto.sql.planner.iterative.rule.PruneAggregationSourceColumns;
 import com.facebook.presto.sql.planner.iterative.rule.PruneCountAggregationOverScalar;
@@ -125,6 +125,7 @@ import com.facebook.presto.sql.planner.optimizations.ImplementIntersectAndExcept
 import com.facebook.presto.sql.planner.optimizations.IndexJoinOptimizer;
 import com.facebook.presto.sql.planner.optimizations.KeyBasedSampler;
 import com.facebook.presto.sql.planner.optimizations.LimitPushDown;
+import com.facebook.presto.sql.planner.optimizations.MergeJoinOptimizer;
 import com.facebook.presto.sql.planner.optimizations.MetadataDeleteOptimizer;
 import com.facebook.presto.sql.planner.optimizations.MetadataQueryOptimizer;
 import com.facebook.presto.sql.planner.optimizations.OptimizeMixedDistinctAggregations;
@@ -486,7 +487,7 @@ public class PlanOptimizers
                 costCalculator,
                 ImmutableSet.of(
                         new RewriteFilterWithExternalFunctionToProject(metadata.getFunctionAndTypeManager()),
-                        new PlanRemotePojections(metadata.getFunctionAndTypeManager()))));
+                        new PlanRemoteProjections(metadata.getFunctionAndTypeManager()))));
 
         // Pass a supplier so that we pickup connector optimizers that are installed later
         builder.add(
@@ -518,7 +519,7 @@ public class PlanOptimizers
 
         builder.add(new IterativeOptimizer(
                 // Because ReorderJoins runs only once,
-                // PredicatePushDown, PruneUnreferenedOutputpus and RemoveRedundantIdentityProjections
+                // PredicatePushDown, PruneUnreferencedOutputs and RemoveRedundantIdentityProjections
                 // need to run beforehand in order to produce an optimal join order
                 // It also needs to run after EliminateCrossJoins so that its chosen order doesn't get undone.
                 ruleStats,
@@ -591,6 +592,11 @@ public class PlanOptimizers
                         .add(new PushRemoteExchangeThroughAssignUniqueId())
                         .add(new InlineProjections(metadata.getFunctionAndTypeManager()))
                         .build()));
+
+        // MergeJoinOptimizer can avoid the local exchange for a join operation
+        // Should be placed after AddExchanges, but before AddLocalExchange
+        // To replace the JoinNode to MergeJoin ahead of AddLocalExchange to avoid adding extra local exchange
+        builder.add(new MergeJoinOptimizer(metadata, sqlParser));
 
         // Optimizers above this don't understand local exchanges, so be careful moving this.
         builder.add(new AddLocalExchanges(metadata, sqlParser));

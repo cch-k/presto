@@ -50,7 +50,6 @@ import org.apache.hadoop.fs.BlockLocation;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.LocatedFileStatus;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.hive.serde2.typeinfo.PrimitiveTypeInfo;
 import org.joda.time.DateTimeZone;
 import org.testng.annotations.AfterClass;
@@ -495,6 +494,7 @@ public class TestHiveSplitManager
                 hiveClientConfig.getMaxPartitionBatchSize(),
                 hiveClientConfig.getMaxPartitionsPerScan(),
                 false,
+                10_000,
                 FUNCTION_AND_TYPE_MANAGER,
                 new HiveLocationService(hdfsEnvironment),
                 FUNCTION_RESOLUTION,
@@ -526,7 +526,6 @@ public class TestHiveSplitManager
                 hiveClientConfig.getMaxOutstandingSplitsSize(),
                 hiveClientConfig.getMinPartitionBatchSize(),
                 hiveClientConfig.getMaxPartitionBatchSize(),
-                hiveClientConfig.getMaxInitialSplits(),
                 hiveClientConfig.getSplitLoaderConcurrency(),
                 false,
                 new ConfigBasedCacheQuotaRequirementProvider(new CacheConfig()),
@@ -570,6 +569,7 @@ public class TestHiveSplitManager
                         false,
                         "layout",
                         Optional.empty(),
+                        false,
                         false),
                 SPLIT_SCHEDULING_CONTEXT);
         List<Set<ColumnHandle>> actualRedundantColumnDomains = splitSource.getNextBatch(NOT_PARTITIONED, 100).get().getSplits().stream()
@@ -631,7 +631,7 @@ public class TestHiveSplitManager
             implements DirectoryLister
     {
         @Override
-        public Iterator<HiveFileInfo> list(ExtendedFileSystem fileSystem, Table table, Path path, NamenodeStats namenodeStats, PathFilter pathFilter, HiveDirectoryContext hiveDirectoryContext)
+        public Iterator<HiveFileInfo> list(ExtendedFileSystem fileSystem, Table table, Path path, Optional<Partition> partition, NamenodeStats namenodeStats, HiveDirectoryContext hiveDirectoryContext)
         {
             try {
                 return ImmutableList.of(

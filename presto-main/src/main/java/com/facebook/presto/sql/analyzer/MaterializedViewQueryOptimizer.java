@@ -133,7 +133,7 @@ public class MaterializedViewQueryOptimizer
             return process(node);
         }
         catch (Exception ex) {
-            logger.warn(ex.getMessage());
+            logger.warn("Failed to rewrite query with materialized view with following exception: %s", ex.getMessage());
             return node;
         }
     }
@@ -437,7 +437,7 @@ public class MaterializedViewQueryOptimizer
                 accessControl,
                 sqlParser,
                 scope,
-                new Analysis(null, ImmutableList.of(), false),
+                new Analysis(null, ImmutableMap.of(), false),
                 expression,
                 WarningCollector.NOOP);
         return SqlToRowExpressionTranslator.translate(

@@ -37,6 +37,7 @@ import org.apache.parquet.format.Util;
 import org.apache.parquet.hadoop.metadata.BlockMetaData;
 import org.apache.parquet.hadoop.metadata.ColumnChunkMetaData;
 import org.apache.parquet.hadoop.metadata.CompressionCodecName;
+import org.apache.parquet.internal.filter2.columnindex.ColumnIndexStore;
 import org.apache.parquet.schema.MessageType;
 
 import java.io.ByteArrayInputStream;
@@ -84,11 +85,16 @@ public final class PredicateUtils
         return new TupleDomainParquetPredicate(parquetTupleDomain, columnReferences.build());
     }
 
-    public static boolean predicateMatches(Predicate parquetPredicate, BlockMetaData block, ParquetDataSource dataSource, Map<List<String>, RichColumnDescriptor> descriptorsByPath, TupleDomain<ColumnDescriptor> parquetTupleDomain)
+    public static boolean predicateMatches(Predicate parquetPredicate, BlockMetaData block, ParquetDataSource dataSource, Map<List<String>, RichColumnDescriptor> descriptorsByPath, TupleDomain<ColumnDescriptor> parquetTupleDomain, Optional<ColumnIndexStore> columnIndexStore, boolean readColumnIndex)
             throws ParquetCorruptionException
     {
         Map<ColumnDescriptor, Statistics<?>> columnStatistics = getStatistics(block, descriptorsByPath);
         if (!parquetPredicate.matches(block.getRowCount(), columnStatistics, dataSource.getId())) {
+            return false;
+        }
+
+        // Page stats is finer grained but relatively more expensive, so we do the filtering after above block filtering.
+        if (columnIndexStore.isPresent() && readColumnIndex && !parquetPredicate.matches(block.getRowCount(), columnIndexStore)) {
             return false;
         }
 
@@ -139,9 +145,9 @@ public final class PredicateUtils
             }
 
             Slice compressedData = wrappedBuffer(data, data.length - inputStream.available(), pageHeader.getCompressed_page_size());
-            DictionaryPageHeader dicHeader = pageHeader.getDictionary_page_header();
-            ParquetEncoding encoding = getParquetEncoding(Encoding.valueOf(dicHeader.getEncoding().name()));
-            int dictionarySize = dicHeader.getNum_values();
+            DictionaryPageHeader dictHeader = pageHeader.getDictionary_page_header();
+            ParquetEncoding encoding = getParquetEncoding(Encoding.valueOf(dictHeader.getEncoding().name()));
+            int dictionarySize = dictHeader.getNum_values();
 
             return Optional.of(new DictionaryPage(decompress(codecName, compressedData, pageHeader.getUncompressed_page_size()), dictionarySize, encoding));
         }

@@ -34,6 +34,7 @@ import com.facebook.presto.event.QueryMonitorConfig;
 import com.facebook.presto.execution.ClusterSizeMonitor;
 import com.facebook.presto.execution.ExplainAnalyzeContext;
 import com.facebook.presto.execution.ForQueryExecution;
+import com.facebook.presto.execution.ForTimeoutThread;
 import com.facebook.presto.execution.NodeResourceStatusConfig;
 import com.facebook.presto.execution.PartialResultQueryManager;
 import com.facebook.presto.execution.QueryExecution;
@@ -50,6 +51,7 @@ import com.facebook.presto.execution.TaskManagerConfig;
 import com.facebook.presto.execution.resourceGroups.InternalResourceGroupManager;
 import com.facebook.presto.execution.resourceGroups.LegacyResourceGroupConfigurationManager;
 import com.facebook.presto.execution.resourceGroups.ResourceGroupManager;
+import com.facebook.presto.execution.scheduler.AdaptivePhasedExecutionPolicy;
 import com.facebook.presto.execution.scheduler.AllAtOnceExecutionPolicy;
 import com.facebook.presto.execution.scheduler.ExecutionPolicy;
 import com.facebook.presto.execution.scheduler.PhasedExecutionPolicy;
@@ -104,6 +106,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 
 import static com.facebook.airlift.concurrent.Threads.daemonThreadsNamed;
 import static com.facebook.airlift.concurrent.Threads.threadsNamed;
@@ -193,6 +196,7 @@ public class CoordinatorModule
         binder.bind(DispatchManager.class).in(Scopes.SINGLETON);
         binder.bind(FailedDispatchQueryFactory.class).in(Scopes.SINGLETON);
         binder.bind(DispatchExecutor.class).in(Scopes.SINGLETON);
+        newExporter(binder).export(DispatchExecutor.class).withGeneratedName();
 
         // local dispatcher
         binder.bind(DispatchQueryFactory.class).to(LocalDispatchQueryFactory.class);
@@ -291,6 +295,7 @@ public class CoordinatorModule
         MapBinder<String, ExecutionPolicy> executionPolicyBinder = newMapBinder(binder, String.class, ExecutionPolicy.class);
         executionPolicyBinder.addBinding("all-at-once").to(AllAtOnceExecutionPolicy.class);
         executionPolicyBinder.addBinding("phased").to(PhasedExecutionPolicy.class);
+        executionPolicyBinder.addBinding("adaptive").to(AdaptivePhasedExecutionPolicy.class);
 
         configBinder(binder).bindConfig(NodeResourceStatusConfig.class);
         binder.bind(NodeResourceStatusProvider.class).to(NodeResourceStatus.class).in(Scopes.SINGLETON);
@@ -371,6 +376,16 @@ public class CoordinatorModule
             @ForTransactionManager ExecutorService finishingExecutor)
     {
         return InMemoryTransactionManager.create(config, idleCheckExecutor, catalogManager, finishingExecutor);
+    }
+
+    @Provides
+    @Singleton
+    @ForTimeoutThread
+    public static ScheduledExecutorService createTimeoutThreadExecutor()
+    {
+        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1, daemonThreadsNamed("thread-timeout"));
+        executor.setRemoveOnCancelPolicy(true);
+        return executor;
     }
 
     private void bindLowMemoryKiller(String name, Class<? extends LowMemoryKiller> clazz)

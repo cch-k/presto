@@ -83,6 +83,7 @@ import static com.facebook.presto.common.type.TimestampType.TIMESTAMP;
 import static com.facebook.presto.common.type.VarcharType.VARCHAR;
 import static com.facebook.presto.common.type.VarcharType.createVarcharType;
 import static com.facebook.presto.operator.scalar.ApplyFunction.APPLY_FUNCTION;
+import static com.facebook.presto.spi.StandardErrorCode.INVALID_CAST_ARGUMENT;
 import static com.facebook.presto.spi.relation.ExpressionOptimizer.Level;
 import static com.facebook.presto.spi.relation.ExpressionOptimizer.Level.OPTIMIZED;
 import static com.facebook.presto.spi.relation.ExpressionOptimizer.Level.SERIALIZABLE;
@@ -97,11 +98,12 @@ import static com.facebook.presto.type.IntervalDayTimeType.INTERVAL_DAY_TIME;
 import static com.facebook.presto.util.DateTimeZoneIndex.getDateTimeZone;
 import static io.airlift.slice.Slices.utf8Slice;
 import static java.lang.String.format;
-import static java.util.Collections.emptyList;
+import static java.util.Collections.emptyMap;
 import static java.util.Locale.ENGLISH;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 public class TestExpressionInterpreter
 {
@@ -582,6 +584,42 @@ public class TestExpressionInterpreter
         // decimal
         assertOptimizedEquals("cast(1.1 as VARCHAR)", "'1.1'");
         // TODO enabled when DECIMAL is default for literal: assertOptimizedEquals("cast(12345678901234567890.123 as VARCHAR)", "'12345678901234567890.123'");
+    }
+
+    @Test
+    public void testCastBigintToBoundedVarchar()
+    {
+        assertEvaluatedEquals("CAST(12300000000 AS varchar(11))", "'12300000000'");
+        assertEvaluatedEquals("CAST(12300000000 AS varchar(50))", "'12300000000'");
+
+        try {
+            evaluate("CAST(12300000000 AS varchar(3))", true);
+            fail("Expected to throw an INVALID_CAST_ARGUMENT exception");
+        }
+        catch (PrestoException e) {
+            try {
+                assertEquals(e.getErrorCode(), INVALID_CAST_ARGUMENT.toErrorCode());
+                assertEquals(e.getMessage(), "Value 12300000000 cannot be represented as varchar(3)");
+            }
+            catch (Throwable failure) {
+                failure.addSuppressed(e);
+                throw failure;
+            }
+        }
+
+        try {
+            evaluate("CAST(-12300000000 AS varchar(3))", true);
+        }
+        catch (PrestoException e) {
+            try {
+                assertEquals(e.getErrorCode(), INVALID_CAST_ARGUMENT.toErrorCode());
+                assertEquals(e.getMessage(), "Value -12300000000 cannot be represented as varchar(3)");
+            }
+            catch (Throwable failure) {
+                failure.addSuppressed(e);
+                throw failure;
+            }
+        }
     }
 
     @Test
@@ -1566,7 +1604,7 @@ public class TestExpressionInterpreter
 
     private static Object optimize(Expression expression)
     {
-        Map<NodeRef<Expression>, Type> expressionTypes = getExpressionTypes(TEST_SESSION, METADATA, SQL_PARSER, SYMBOL_TYPES, expression, emptyList(), WarningCollector.NOOP);
+        Map<NodeRef<Expression>, Type> expressionTypes = getExpressionTypes(TEST_SESSION, METADATA, SQL_PARSER, SYMBOL_TYPES, expression, emptyMap(), WarningCollector.NOOP);
         ExpressionInterpreter interpreter = expressionOptimizer(expression, METADATA, TEST_SESSION, expressionTypes);
         return interpreter.optimize(variable -> {
             Symbol symbol = new Symbol(variable.getName());
@@ -1751,7 +1789,7 @@ public class TestExpressionInterpreter
 
     private static Object evaluate(Expression expression, boolean deterministic)
     {
-        Map<NodeRef<Expression>, Type> expressionTypes = getExpressionTypes(TEST_SESSION, METADATA, SQL_PARSER, SYMBOL_TYPES, expression, emptyList(), WarningCollector.NOOP);
+        Map<NodeRef<Expression>, Type> expressionTypes = getExpressionTypes(TEST_SESSION, METADATA, SQL_PARSER, SYMBOL_TYPES, expression, emptyMap(), WarningCollector.NOOP);
         Object expressionResult = expressionInterpreter(expression, METADATA, TEST_SESSION, expressionTypes).evaluate();
         Object rowExpressionResult = rowExpressionInterpreter(TRANSLATOR.translateAndOptimize(expression), METADATA, TEST_SESSION.toConnectorSession()).evaluate();
 

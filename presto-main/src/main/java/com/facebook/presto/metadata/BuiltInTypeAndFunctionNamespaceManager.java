@@ -21,6 +21,7 @@ import com.facebook.presto.common.block.BlockEncodingSerde;
 import com.facebook.presto.common.block.BlockSerdeUtil;
 import com.facebook.presto.common.function.OperatorType;
 import com.facebook.presto.common.function.SqlFunctionResult;
+import com.facebook.presto.common.type.DistinctTypeInfo;
 import com.facebook.presto.common.type.ParametricType;
 import com.facebook.presto.common.type.Type;
 import com.facebook.presto.common.type.TypeManager;
@@ -114,6 +115,7 @@ import com.facebook.presto.operator.scalar.ArrayShuffleFunction;
 import com.facebook.presto.operator.scalar.ArraySliceFunction;
 import com.facebook.presto.operator.scalar.ArraySortComparatorFunction;
 import com.facebook.presto.operator.scalar.ArraySortFunction;
+import com.facebook.presto.operator.scalar.ArrayTrimFunction;
 import com.facebook.presto.operator.scalar.ArrayUnionFunction;
 import com.facebook.presto.operator.scalar.ArraysOverlapFunction;
 import com.facebook.presto.operator.scalar.BitwiseFunctions;
@@ -256,6 +258,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -308,6 +311,8 @@ import static com.facebook.presto.operator.aggregation.TDigestAggregationFunctio
 import static com.facebook.presto.operator.aggregation.approxmostfrequent.ApproximateMostFrequent.APPROXIMATE_MOST_FREQUENT;
 import static com.facebook.presto.operator.aggregation.arrayagg.SetAggregationFunction.SET_AGG;
 import static com.facebook.presto.operator.aggregation.arrayagg.SetUnionFunction.SET_UNION;
+import static com.facebook.presto.operator.aggregation.minmaxby.AlternativeMaxByAggregationFunction.ALTERNATIVE_MAX_BY;
+import static com.facebook.presto.operator.aggregation.minmaxby.AlternativeMinByAggregationFunction.ALTERNATIVE_MIN_BY;
 import static com.facebook.presto.operator.aggregation.minmaxby.MaxByAggregationFunction.MAX_BY;
 import static com.facebook.presto.operator.aggregation.minmaxby.MaxByNAggregationFunction.MAX_BY_N_AGGREGATION;
 import static com.facebook.presto.operator.aggregation.minmaxby.MinByAggregationFunction.MIN_BY;
@@ -365,6 +370,17 @@ import static com.facebook.presto.operator.scalar.ScalarFunctionImplementationCh
 import static com.facebook.presto.operator.scalar.TryCastFunction.TRY_CAST;
 import static com.facebook.presto.operator.scalar.ZipFunction.ZIP_FUNCTIONS;
 import static com.facebook.presto.operator.scalar.ZipWithFunction.ZIP_WITH_FUNCTION;
+import static com.facebook.presto.operator.scalar.distinct.DistinctTypeBetweenOperator.DISTINCT_TYPE_BETWEEN_OPERATOR;
+import static com.facebook.presto.operator.scalar.distinct.DistinctTypeDistinctFromOperator.DISTINCT_TYPE_DISTINCT_FROM_OPERATOR;
+import static com.facebook.presto.operator.scalar.distinct.DistinctTypeEqualOperator.DISTINCT_TYPE_EQUAL_OPERATOR;
+import static com.facebook.presto.operator.scalar.distinct.DistinctTypeGreaterThanOperator.DISTINCT_TYPE_GREATER_THAN_OPERATOR;
+import static com.facebook.presto.operator.scalar.distinct.DistinctTypeGreaterThanOrEqualOperator.DISTINCT_TYPE_GREATER_THAN_OR_EQUAL_OPERATOR;
+import static com.facebook.presto.operator.scalar.distinct.DistinctTypeHashCodeOperator.DISTINCT_TYPE_HASH_CODE_OPERATOR;
+import static com.facebook.presto.operator.scalar.distinct.DistinctTypeIndeterminateOperator.DISTINCT_TYPE_INDETERMINATE_OPERATOR;
+import static com.facebook.presto.operator.scalar.distinct.DistinctTypeLessThanOperator.DISTINCT_TYPE_LESS_THAN_OPERATOR;
+import static com.facebook.presto.operator.scalar.distinct.DistinctTypeLessThanOrEqualOperator.DISTINCT_TYPE_LESS_THAN_OR_EQUAL_OPERATOR;
+import static com.facebook.presto.operator.scalar.distinct.DistinctTypeNotEqualOperator.DISTINCT_TYPE_NOT_EQUAL_OPERATOR;
+import static com.facebook.presto.operator.scalar.distinct.DistinctTypeXXHash64Operator.DISTINCT_TYPE_XX_HASH_64_OPERATOR;
 import static com.facebook.presto.operator.window.AggregateWindowFunction.supplier;
 import static com.facebook.presto.spi.StandardErrorCode.FUNCTION_IMPLEMENTATION_MISSING;
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_USER_ERROR;
@@ -420,6 +436,8 @@ import static com.facebook.presto.type.DecimalSaturatedFloorCasts.INTEGER_TO_DEC
 import static com.facebook.presto.type.DecimalSaturatedFloorCasts.SMALLINT_TO_DECIMAL_SATURATED_FLOOR_CAST;
 import static com.facebook.presto.type.DecimalSaturatedFloorCasts.TINYINT_TO_DECIMAL_SATURATED_FLOOR_CAST;
 import static com.facebook.presto.type.DecimalToDecimalCasts.DECIMAL_TO_DECIMAL_CAST;
+import static com.facebook.presto.type.DistinctTypeCasts.DISTINCT_TYPE_FROM_CAST;
+import static com.facebook.presto.type.DistinctTypeCasts.DISTINCT_TYPE_TO_CAST;
 import static com.facebook.presto.type.FunctionParametricType.FUNCTION;
 import static com.facebook.presto.type.IntervalDayTimeType.INTERVAL_DAY_TIME;
 import static com.facebook.presto.type.IntervalYearMonthType.INTERVAL_YEAR_MONTH;
@@ -460,7 +478,7 @@ public class BuiltInTypeAndFunctionNamespaceManager
     private final LoadingCache<SpecializedFunctionKey, ScalarFunctionImplementation> specializedScalarCache;
     private final LoadingCache<SpecializedFunctionKey, InternalAggregationFunction> specializedAggregationCache;
     private final LoadingCache<SpecializedFunctionKey, WindowFunctionSupplier> specializedWindowCache;
-    private final LoadingCache<TypeSignature, Type> parametricTypeCache;
+    private final LoadingCache<ExactTypeSignature, Type> parametricTypeCache;
     private final MagicLiteralFunction magicLiteralFunction;
 
     private volatile FunctionMap functions = new FunctionMap();
@@ -476,6 +494,7 @@ public class BuiltInTypeAndFunctionNamespaceManager
 
         specializedFunctionKeyCache = CacheBuilder.newBuilder()
                 .maximumSize(1000)
+                .expireAfterWrite(1, HOURS)
                 .build(CacheLoader.from(this::doGetSpecializedFunctionKey));
 
         // TODO the function map should be updated, so that this cast can be removed
@@ -519,6 +538,7 @@ public class BuiltInTypeAndFunctionNamespaceManager
 
         parametricTypeCache = CacheBuilder.newBuilder()
                 .maximumSize(1000)
+                .expireAfterWrite(1, HOURS)
                 .build(CacheLoader.from(this::instantiateParametricType));
 
         registerBuiltInFunctions(getBuildInFunctions(featuresConfig));
@@ -752,6 +772,7 @@ public class BuiltInTypeAndFunctionNamespaceManager
                 .scalar(ArrayUnionFunction.class)
                 .scalar(ArrayExceptFunction.class)
                 .scalar(ArraySliceFunction.class)
+                .scalar(ArrayTrimFunction.class)
                 .scalar(ArrayIndeterminateOperator.class)
                 .scalar(ArrayCombinationsFunction.class)
                 .scalar(ArrayNgramsFunction.class)
@@ -848,6 +869,14 @@ public class BuiltInTypeAndFunctionNamespaceManager
                 .scalars(EnumCasts.class)
                 .scalars(LongEnumOperators.class)
                 .scalars(VarcharEnumOperators.class)
+                .functions(DISTINCT_TYPE_FROM_CAST, DISTINCT_TYPE_TO_CAST)
+                .functions(DISTINCT_TYPE_EQUAL_OPERATOR, DISTINCT_TYPE_NOT_EQUAL_OPERATOR)
+                .functions(DISTINCT_TYPE_LESS_THAN_OPERATOR, DISTINCT_TYPE_LESS_THAN_OR_EQUAL_OPERATOR)
+                .functions(DISTINCT_TYPE_GREATER_THAN_OPERATOR, DISTINCT_TYPE_GREATER_THAN_OR_EQUAL_OPERATOR)
+                .functions(DISTINCT_TYPE_BETWEEN_OPERATOR)
+                .function(DISTINCT_TYPE_DISTINCT_FROM_OPERATOR)
+                .functions(DISTINCT_TYPE_HASH_CODE_OPERATOR, DISTINCT_TYPE_XX_HASH_64_OPERATOR)
+                .function(DISTINCT_TYPE_INDETERMINATE_OPERATOR)
                 .codegenScalars(MapFilterFunction.class);
 
         switch (featuresConfig.getRegexLibrary()) {
@@ -864,6 +893,13 @@ public class BuiltInTypeAndFunctionNamespaceManager
         if (featuresConfig.isLegacyLogFunction()) {
             builder.scalar(LegacyLogFunction.class);
         }
+
+        // Replace some aggregations for Velox to override intermediate aggregation type.
+        if (featuresConfig.isUseAlternativeFunctionSignatures()) {
+            builder.override(MAX_BY, ALTERNATIVE_MAX_BY);
+            builder.override(MIN_BY, ALTERNATIVE_MIN_BY);
+        }
+
         return builder.getFunctions();
     }
 
@@ -1073,7 +1109,7 @@ public class BuiltInTypeAndFunctionNamespaceManager
             return Optional.of(type);
         }
         try {
-            return Optional.ofNullable(parametricTypeCache.getUnchecked(typeSignature));
+            return Optional.ofNullable(parametricTypeCache.getUnchecked(new ExactTypeSignature(typeSignature)));
         }
         catch (UncheckedExecutionException e) {
             throwIfUnchecked(e.getCause());
@@ -1105,8 +1141,9 @@ public class BuiltInTypeAndFunctionNamespaceManager
         return parametricTypes.values();
     }
 
-    private Type instantiateParametricType(TypeSignature signature)
+    private Type instantiateParametricType(ExactTypeSignature exactSignature)
     {
+        TypeSignature signature = exactSignature.getTypeSignature();
         List<TypeParameter> parameters = new ArrayList<>();
 
         for (TypeSignatureParameter parameter : signature.getParameters()) {
@@ -1250,6 +1287,92 @@ public class BuiltInTypeAndFunctionNamespaceManager
         public Collection<SqlFunction> get(QualifiedObjectName name)
         {
             return functions.get(name);
+        }
+    }
+
+    /**
+     * TypeSignature but has overridden equals(). Here, we compare exact signature of any underlying distinct
+     * types. Some distinct types may have extra information on their lazily loaded parents, and same parent
+     * information is compared in equals(). This is needed to cache types in parametricTypesCache.
+     */
+    private static class ExactTypeSignature
+    {
+        private final TypeSignature typeSignature;
+
+        public ExactTypeSignature(TypeSignature typeSignature)
+        {
+            this.typeSignature = typeSignature;
+        }
+
+        public TypeSignature getTypeSignature()
+        {
+            return typeSignature;
+        }
+
+        @Override
+        public int hashCode()
+        {
+            return Objects.hash(typeSignature);
+        }
+
+        @Override
+        public boolean equals(Object o)
+        {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+
+            ExactTypeSignature other = (ExactTypeSignature) o;
+            return equals(typeSignature, other.typeSignature);
+        }
+
+        private static boolean equals(TypeSignature left, TypeSignature right)
+        {
+            if (!left.equals(right)) {
+                return false;
+            }
+
+            if (left.isDistinctType() && right.isDistinctType()) {
+                return equals(left.getDistinctTypeInfo(), right.getDistinctTypeInfo());
+            }
+            int index = 0;
+            for (TypeSignatureParameter leftParameter : left.getParameters()) {
+                TypeSignatureParameter rightParameter = right.getParameters().get(index++);
+                if (!leftParameter.getKind().equals(rightParameter.getKind())) {
+                    return false;
+                }
+
+                switch (leftParameter.getKind()) {
+                    case TYPE:
+                        if (!equals(leftParameter.getTypeSignature(), rightParameter.getTypeSignature())) {
+                            return false;
+                        }
+                        break;
+                    case NAMED_TYPE:
+                        if (!equals(leftParameter.getNamedTypeSignature().getTypeSignature(), rightParameter.getNamedTypeSignature().getTypeSignature())) {
+                            return false;
+                        }
+                        break;
+                    case DISTINCT_TYPE:
+                        if (!equals(leftParameter.getDistinctTypeInfo(), rightParameter.getDistinctTypeInfo())) {
+                            return false;
+                        }
+                        break;
+                }
+            }
+            return true;
+        }
+
+        private static boolean equals(DistinctTypeInfo left, DistinctTypeInfo right)
+        {
+            return Objects.equals(left.getName(), right.getName()) &&
+                    Objects.equals(left.getBaseType(), right.getBaseType()) &&
+                    Objects.equals(left.isOrderable(), right.isOrderable()) &&
+                    Objects.equals(left.getTopMostAncestor(), right.getTopMostAncestor()) &&
+                    Objects.equals(left.getOtherAncestors(), right.getOtherAncestors());
         }
     }
 

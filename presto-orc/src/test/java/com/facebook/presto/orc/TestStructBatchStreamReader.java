@@ -231,9 +231,11 @@ public class TestStructBatchStreamReader
                 Optional.empty(),
                 NO_ENCRYPTION,
                 OrcWriterOptions.builder()
-                        .withStripeMinSize(new DataSize(0, MEGABYTE))
-                        .withStripeMaxSize(new DataSize(32, MEGABYTE))
-                        .withStripeMaxRowCount(ORC_STRIPE_SIZE)
+                        .withFlushPolicy(DefaultOrcWriterFlushPolicy.builder()
+                                .withStripeMinSize(new DataSize(0, MEGABYTE))
+                                .withStripeMaxSize(new DataSize(32, MEGABYTE))
+                                .withStripeMaxRowCount(ORC_STRIPE_SIZE)
+                                .build())
                         .withRowGroupMaxRowCount(ORC_ROW_GROUP_SIZE)
                         .withDictionaryMaxMemory(new DataSize(32, MEGABYTE))
                         .build(),
@@ -241,7 +243,7 @@ public class TestStructBatchStreamReader
                 HIVE_STORAGE_TIME_ZONE,
                 true,
                 BOTH,
-                new OrcWriterStats());
+                new NoOpOrcWriterStats());
 
         // write down some data with unsorted streams
         Block[] fieldBlocks = new Block[data.size()];

@@ -15,7 +15,6 @@ package com.facebook.presto.execution;
 
 import com.facebook.airlift.concurrent.SetThreadName;
 import com.facebook.presto.Session;
-import com.facebook.presto.SystemSessionProperties;
 import com.facebook.presto.cost.CostCalculator;
 import com.facebook.presto.cost.StatsCalculator;
 import com.facebook.presto.execution.QueryPreparer.PreparedQuery;
@@ -75,9 +74,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+import static com.facebook.presto.SystemSessionProperties.getExecutionPolicy;
+import static com.facebook.presto.SystemSessionProperties.getQueryAnalyzerTimeout;
 import static com.facebook.presto.SystemSessionProperties.isSpoolingOutputBufferEnabled;
 import static com.facebook.presto.SystemSessionProperties.isUseLegacyScheduler;
 import static com.facebook.presto.common.RuntimeMetricName.FRAGMENT_PLAN_TIME_NANOS;
@@ -86,6 +88,7 @@ import static com.facebook.presto.execution.buffer.OutputBuffers.BROADCAST_PARTI
 import static com.facebook.presto.execution.buffer.OutputBuffers.createInitialEmptyOutputBuffers;
 import static com.facebook.presto.execution.buffer.OutputBuffers.createSpoolingOutputBuffers;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
+import static com.facebook.presto.sql.ParameterUtils.parameterExtractor;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Throwables.throwIfInstanceOf;
 import static io.airlift.units.DataSize.Unit.BYTE;
@@ -111,6 +114,7 @@ public class SqlQueryExecution
     private final RemoteTaskFactory remoteTaskFactory;
     private final LocationFactory locationFactory;
     private final ExecutorService queryExecutor;
+    private final ScheduledExecutorService timeoutThreadExecutor;
     private final SectionExecutionFactory sectionExecutionFactory;
     private final InternalNodeManager internalNodeManager;
 
@@ -142,6 +146,7 @@ public class SqlQueryExecution
             RemoteTaskFactory remoteTaskFactory,
             LocationFactory locationFactory,
             ExecutorService queryExecutor,
+            ScheduledExecutorService timeoutThreadExecutor,
             SectionExecutionFactory sectionExecutionFactory,
             InternalNodeManager internalNodeManager,
             QueryExplainer queryExplainer,
@@ -164,6 +169,7 @@ public class SqlQueryExecution
             this.planFragmenter = requireNonNull(planFragmenter, "planFragmenter is null");
             this.locationFactory = requireNonNull(locationFactory, "locationFactory is null");
             this.queryExecutor = requireNonNull(queryExecutor, "queryExecutor is null");
+            this.timeoutThreadExecutor = requireNonNull(timeoutThreadExecutor, "timeoutThreadExecutor is null");
             this.sectionExecutionFactory = requireNonNull(sectionExecutionFactory, "sectionExecutionFactory is null");
             this.internalNodeManager = requireNonNull(internalNodeManager, "internalNodeManager is null");
             this.executionPolicy = requireNonNull(executionPolicy, "executionPolicy is null");
@@ -184,6 +190,7 @@ public class SqlQueryExecution
                     accessControl,
                     Optional.of(queryExplainer),
                     preparedQuery.getParameters(),
+                    parameterExtractor(preparedQuery.getStatement(), preparedQuery.getParameters()),
                     warningCollector);
 
             this.analysis = analyzer.analyzeSemantic(preparedQuery.getStatement(), false);
@@ -362,8 +369,16 @@ public class SqlQueryExecution
                     return;
                 }
 
-                // analyze query
-                PlanRoot plan = analyzeQuery();
+                PlanRoot plan;
+
+                // set a thread timeout in case query analyzer ends up in an infinite loop
+                try (TimeoutThread unused = new TimeoutThread(
+                        Thread.currentThread(),
+                        timeoutThreadExecutor,
+                        getQueryAnalyzerTimeout(getSession()))) {
+                    // analyze query
+                    plan = analyzeQuery();
+                }
 
                 metadata.beginQuery(getSession(), plan.getConnectors());
 
@@ -727,6 +742,7 @@ public class SqlQueryExecution
         private final RemoteTaskFactory remoteTaskFactory;
         private final QueryExplainer queryExplainer;
         private final LocationFactory locationFactory;
+        private final ScheduledExecutorService timeoutThreadExecutor;
         private final ExecutorService queryExecutor;
         private final SectionExecutionFactory sectionExecutionFactory;
         private final InternalNodeManager internalNodeManager;
@@ -747,6 +763,7 @@ public class SqlQueryExecution
                 PlanFragmenter planFragmenter,
                 RemoteTaskFactory remoteTaskFactory,
                 @ForQueryExecution ExecutorService queryExecutor,
+                @ForTimeoutThread ScheduledExecutorService timeoutThreadExecutor,
                 SectionExecutionFactory sectionExecutionFactory,
                 InternalNodeManager internalNodeManager,
                 QueryExplainer queryExplainer,
@@ -768,6 +785,7 @@ public class SqlQueryExecution
             this.planFragmenter = requireNonNull(planFragmenter, "planFragmenter is null");
             this.remoteTaskFactory = requireNonNull(remoteTaskFactory, "remoteTaskFactory is null");
             this.queryExecutor = requireNonNull(queryExecutor, "queryExecutor is null");
+            this.timeoutThreadExecutor = requireNonNull(timeoutThreadExecutor, "timeoutThreadExecutor is null");
             this.sectionExecutionFactory = requireNonNull(sectionExecutionFactory, "sectionExecutionFactory is null");
             this.internalNodeManager = requireNonNull(internalNodeManager, "internalNodeManager is null");
             this.queryExplainer = requireNonNull(queryExplainer, "queryExplainer is null");
@@ -789,7 +807,7 @@ public class SqlQueryExecution
                 WarningCollector warningCollector,
                 Optional<QueryType> queryType)
         {
-            String executionPolicyName = SystemSessionProperties.getExecutionPolicy(stateMachine.getSession());
+            String executionPolicyName = getExecutionPolicy(stateMachine.getSession());
             ExecutionPolicy executionPolicy = executionPolicies.get(executionPolicyName);
             checkArgument(executionPolicy != null, "No execution policy %s", executionPolicy);
 
@@ -808,6 +826,7 @@ public class SqlQueryExecution
                     remoteTaskFactory,
                     locationFactory,
                     queryExecutor,
+                    timeoutThreadExecutor,
                     sectionExecutionFactory,
                     internalNodeManager,
                     queryExplainer,

@@ -5,6 +5,11 @@ Properties Reference
 This section describes the most important config properties that
 may be used to tune Presto or alter its behavior when required.
 
+The following pages are not a complete list of all configuration and
+session properties available in Presto, and do not include any connector-specific
+catalog configuration properties. For more information on catalog configuration
+properties, refer to the :doc:`connector documentation </connector/>`.
+
 .. contents::
     :local:
     :backlinks: none
@@ -731,6 +736,18 @@ Optimizer Properties
 
     .. warning:: The number of possible join orders scales factorially with the number of relations,
                  so increasing this value can cause serious performance issues.
+
+Planner Properties
+--------------------------------------
+
+``planner.query-analyzer-timeout``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``duration``
+    * **Default value:** ``3m``
+
+    Maximum running time for the query analyzer in case the processing takes too long or is stuck in an infinite loop.
+    When timeout expires the planner thread is interrupted and throws exception.
 
 Regular Expression Function Properties
 --------------------------------------

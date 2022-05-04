@@ -26,7 +26,9 @@ import com.facebook.presto.server.BasicQueryStats;
 import com.facebook.presto.spi.ErrorCode;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.QueryId;
+import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.WarningCollector;
+import com.facebook.presto.spi.connector.ConnectorCommitHandle;
 import com.facebook.presto.spi.function.SqlFunctionId;
 import com.facebook.presto.spi.function.SqlInvokedFunction;
 import com.facebook.presto.spi.resourceGroups.QueryType;
@@ -97,6 +99,7 @@ public class QueryStateMachine
 
     private final QueryId queryId;
     private final String query;
+    private final Optional<String> preparedQuery;
     private final Session session;
     private final URI self;
     private final Optional<QueryType> queryType;
@@ -145,6 +148,7 @@ public class QueryStateMachine
 
     private final AtomicReference<Set<Input>> inputs = new AtomicReference<>(ImmutableSet.of());
     private final AtomicReference<Optional<Output>> output = new AtomicReference<>(Optional.empty());
+
     private final StateMachine<Optional<QueryInfo>> finalQueryInfo;
     private final AtomicReference<Optional<String>> expandedQuery = new AtomicReference<>(Optional.empty());
 
@@ -155,6 +159,7 @@ public class QueryStateMachine
 
     private QueryStateMachine(
             String query,
+            Optional<String> preparedQuery,
             Session session,
             URI self,
             ResourceGroupId resourceGroup,
@@ -166,6 +171,7 @@ public class QueryStateMachine
             WarningCollector warningCollector)
     {
         this.query = requireNonNull(query, "query is null");
+        this.preparedQuery = requireNonNull(preparedQuery, "preparedQuery is null");
         this.session = requireNonNull(session, "session is null");
         this.queryId = session.getQueryId();
         this.self = requireNonNull(self, "self is null");
@@ -186,6 +192,7 @@ public class QueryStateMachine
      */
     public static QueryStateMachine begin(
             String query,
+            Optional<String> preparedQuery,
             Session session,
             URI self,
             ResourceGroupId resourceGroup,
@@ -199,6 +206,7 @@ public class QueryStateMachine
     {
         return beginWithTicker(
                 query,
+                preparedQuery,
                 session,
                 self,
                 resourceGroup,
@@ -214,6 +222,7 @@ public class QueryStateMachine
 
     static QueryStateMachine beginWithTicker(
             String query,
+            Optional<String> preparedQuery,
             Session session,
             URI self,
             ResourceGroupId resourceGroup,
@@ -235,6 +244,7 @@ public class QueryStateMachine
 
         QueryStateMachine queryStateMachine = new QueryStateMachine(
                 query,
+                preparedQuery,
                 session,
                 self,
                 resourceGroup,
@@ -392,7 +402,8 @@ public class QueryStateMachine
                 queryStats,
                 failureCause.get(),
                 queryType,
-                warningCollector.getWarnings());
+                warningCollector.getWarnings(),
+                preparedQuery);
     }
 
     public QueryInfo getQueryInfo(Optional<StageInfo> rootStage)
@@ -412,11 +423,12 @@ public class QueryStateMachine
             }
         }
 
-        boolean completeInfo = getAllStages(rootStage).stream().allMatch(StageInfo::isFinalStageInfo);
+        List<StageInfo> allStages = getAllStages(rootStage);
+        boolean finalInfo = state.isDone() && allStages.stream().allMatch(StageInfo::isFinalStageInfo);
         Optional<List<TaskId>> failedTasks;
         // Traversing all tasks is expensive, thus only construct failedTasks list when query finished.
         if (state.isDone()) {
-            failedTasks = Optional.of(getAllStages(rootStage).stream()
+            failedTasks = Optional.of(allStages.stream()
                     .flatMap(stageInfo -> Streams.concat(ImmutableList.of(stageInfo.getLatestAttemptExecutionInfo()).stream(), stageInfo.getPreviousAttemptsExecutionInfos().stream()))
                     .flatMap(execution -> execution.getTasks().stream())
                     .filter(taskInfo -> taskInfo.getTaskStatus().getState() == TaskState.FAILED)
@@ -427,8 +439,8 @@ public class QueryStateMachine
             failedTasks = Optional.empty();
         }
 
-        List<StageId> runtimeOptimizedStages = getAllStages(rootStage).stream().filter(StageInfo::isRuntimeOptimized).map(StageInfo::getStageId).collect(toImmutableList());
-        QueryStats queryStats = getQueryStats(rootStage);
+        List<StageId> runtimeOptimizedStages = allStages.stream().filter(StageInfo::isRuntimeOptimized).map(StageInfo::getStageId).collect(toImmutableList());
+        QueryStats queryStats = getQueryStats(rootStage, allStages);
         return new QueryInfo(
                 queryId,
                 session.toSessionRepresentation(),
@@ -439,6 +451,7 @@ public class QueryStateMachine
                 outputManager.getQueryOutputInfo().map(QueryOutputInfo::getColumnNames).orElse(ImmutableList.of()),
                 query,
                 expandedQuery.get(),
+                preparedQuery,
                 queryStats,
                 Optional.ofNullable(setCatalog.get()),
                 Optional.ofNullable(setSchema.get()),
@@ -456,7 +469,7 @@ public class QueryStateMachine
                 warningCollector.getWarnings(),
                 inputs.get(),
                 output.get(),
-                completeInfo,
+                finalInfo,
                 Optional.of(resourceGroup),
                 queryType,
                 failedTasks,
@@ -465,11 +478,12 @@ public class QueryStateMachine
                 removedSessionFunctions);
     }
 
-    private QueryStats getQueryStats(Optional<StageInfo> rootStage)
+    private QueryStats getQueryStats(Optional<StageInfo> rootStage, List<StageInfo> allStages)
     {
         return QueryStats.create(
                 queryStateTimer,
                 rootStage,
+                allStages,
                 getPeakRunningTaskCount(),
                 succinctBytes(getPeakUserMemoryInBytes()),
                 succinctBytes(getPeakTotalMemoryInBytes()),
@@ -514,6 +528,21 @@ public class QueryStateMachine
     {
         requireNonNull(output, "output is null");
         this.output.set(output);
+    }
+
+    private void addSerializedCommitOutputToOutput(ConnectorCommitHandle commitHandle)
+    {
+        if (!output.get().isPresent()) {
+            return;
+        }
+
+        Output outputInfo = output.get().get();
+        SchemaTableName table = new SchemaTableName(outputInfo.getSchema(), outputInfo.getTable());
+        output.set(Optional.of(new Output(
+                outputInfo.getConnectorId(),
+                outputInfo.getSchema(),
+                outputInfo.getTable(),
+                commitHandle.getSerializedCommitOutput(table))));
     }
 
     public Map<String, String> getSetSessionProperties()
@@ -706,6 +735,7 @@ public class QueryStateMachine
 
         Optional<TransactionInfo> transaction = session.getTransactionId()
                 .flatMap(transactionManager::getOptionalTransactionInfo);
+
         if (transaction.isPresent() && transaction.get().isAutoCommitContext()) {
             ListenableFuture<?> commitFuture = transactionManager.asyncCommit(transaction.get().getTransactionId());
             Futures.addCallback(commitFuture, new FutureCallback<Object>()
@@ -714,6 +744,7 @@ public class QueryStateMachine
                 public void onSuccess(@Nullable Object result)
                 {
                     transitionToFinished();
+                    processConnectorCommitHandle(result);
                 }
 
                 @Override
@@ -727,6 +758,13 @@ public class QueryStateMachine
             transitionToFinished();
         }
         return true;
+    }
+
+    private void processConnectorCommitHandle(Object result)
+    {
+        if (result instanceof ConnectorCommitHandle) {
+            addSerializedCommitOutputToOutput((ConnectorCommitHandle) result);
+        }
     }
 
     private void transitionToFinished()
@@ -932,6 +970,7 @@ public class QueryStateMachine
                 queryInfo.getFieldNames(),
                 queryInfo.getQuery(),
                 queryInfo.getExpandedQuery(),
+                queryInfo.getPreparedQuery(),
                 pruneQueryStats(queryInfo.getQueryStats()),
                 queryInfo.getSetCatalog(),
                 queryInfo.getSetSchema(),
@@ -949,7 +988,7 @@ public class QueryStateMachine
                 queryInfo.getWarnings(),
                 queryInfo.getInputs(),
                 queryInfo.getOutput(),
-                queryInfo.isCompleteInfo(),
+                queryInfo.isFinalQueryInfo(),
                 queryInfo.getResourceGroupId(),
                 queryInfo.getQueryType(),
                 queryInfo.getFailedTasks(),

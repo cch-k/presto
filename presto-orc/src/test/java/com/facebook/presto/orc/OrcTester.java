@@ -126,6 +126,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -616,7 +617,20 @@ public class OrcTester
         assertEquals(writeTypes.size(), writeValues.size());
         assertEquals(writeTypes.size(), readValues.size());
 
-        OrcWriterStats stats = new OrcWriterStats();
+        AtomicLong totalSize = new AtomicLong(0);
+        WriterStats stats = new WriterStats() {
+            @Override
+            public void recordStripeWritten(int stripeMinBytes, int stripeMaxBytes, int dictionaryMaxMemoryBytes, FlushReason flushReason, int dictionaryBytes, StripeInformation stripeInformation)
+            {
+            }
+
+            @Override
+            public void updateSizeInBytes(long deltaInBytes)
+            {
+                totalSize.getAndAdd(deltaInBytes);
+            }
+        };
+
         for (Format format : formats) {
             if (!readTypes.stream().allMatch(readType -> format.supportsType(readType))) {
                 return;
@@ -712,7 +726,7 @@ public class OrcTester
             }
         }
 
-        assertEquals(stats.getWriterSizeInBytes(), 0);
+        assertEquals(totalSize.get(), 0);
     }
 
     public static class OrcReaderSettings
@@ -899,7 +913,8 @@ public class OrcTester
                 includedColumns,
                 outputColumns,
                 false,
-                new TestingHiveOrcAggregatedMemoryContext())) {
+                new TestingHiveOrcAggregatedMemoryContext(),
+                false)) {
             assertEquals(recordReader.getReaderPosition(), 0);
             assertEquals(recordReader.getFilePosition(), 0);
             assertFileContentsPresto(types, recordReader, expectedValues, outputColumns);
@@ -1388,18 +1403,22 @@ public class OrcTester
 
             List<Entry<?, ?>> expectedEntries = new ArrayList<>(expectedMap.entrySet());
             for (Entry<?, ?> actualEntry : actualMap.entrySet()) {
+                boolean matchFound = false;
                 for (Iterator<Entry<?, ?>> iterator = expectedEntries.iterator(); iterator.hasNext(); ) {
                     Entry<?, ?> expectedEntry = iterator.next();
                     try {
                         assertColumnValueEquals(keyType, actualEntry.getKey(), expectedEntry.getKey());
                         assertColumnValueEquals(valueType, actualEntry.getValue(), expectedEntry.getValue());
                         iterator.remove();
+                        matchFound = true;
+                        break;
                     }
                     catch (AssertionError ignored) {
                     }
                 }
+                assertTrue(matchFound);
             }
-            assertTrue(expectedEntries.isEmpty(), "Unmatched entries " + expectedEntries);
+            assertTrue(expectedEntries.isEmpty());
         }
         else if (StandardTypes.ROW.equals(baseType)) {
             List<Type> fieldTypes = type.getTypeParameters();
@@ -1440,7 +1459,17 @@ public class OrcTester
     static OrcBatchRecordReader createCustomOrcRecordReader(TempFile tempFile, OrcEncoding orcEncoding, OrcPredicate predicate, List<Type> types, int initialBatchSize, boolean cacheable, boolean mapNullKeysEnabled)
             throws IOException
     {
-        return createCustomOrcRecordReader(tempFile, orcEncoding, predicate, types, initialBatchSize, new StorageOrcFileTailSource(), new StorageStripeMetadataSource(), cacheable, ImmutableMap.of(), mapNullKeysEnabled);
+        return createCustomOrcRecordReader(
+                tempFile,
+                orcEncoding,
+                predicate,
+                types,
+                initialBatchSize,
+                new StorageOrcFileTailSource(),
+                new StorageStripeMetadataSource(),
+                cacheable,
+                ImmutableMap.of(),
+                mapNullKeysEnabled);
     }
 
     static OrcBatchRecordReader createCustomOrcRecordReader(
@@ -1463,13 +1492,12 @@ public class OrcTester
                 orcFileTailSource,
                 stripeMetadataSource,
                 NOOP_ORC_AGGREGATED_MEMORY_CONTEXT,
-                new OrcReaderOptions(
-                        new DataSize(1, MEGABYTE),
-                        new DataSize(1, MEGABYTE),
-                        MAX_BLOCK_SIZE,
-                        false,
-                        mapNullKeysEnabled,
-                        false),
+                OrcReaderOptions.builder()
+                        .withMaxMergeDistance(new DataSize(1, MEGABYTE))
+                        .withTinyStripeThreshold(new DataSize(1, MEGABYTE))
+                        .withMaxBlockSize(MAX_BLOCK_SIZE)
+                        .withMapNullKeysEnabled(mapNullKeysEnabled)
+                        .build(),
                 cacheable,
                 new DwrfEncryptionProvider(new UnsupportedEncryptionLibrary(), new TestingEncryptionLibrary()),
                 DwrfKeyProvider.of(intermediateEncryptionKeys),
@@ -1498,13 +1526,12 @@ public class OrcTester
                 new StorageOrcFileTailSource(),
                 new StorageStripeMetadataSource(),
                 NOOP_ORC_AGGREGATED_MEMORY_CONTEXT,
-                new OrcReaderOptions(
-                        new DataSize(1, MEGABYTE),
-                        new DataSize(1, MEGABYTE),
-                        MAX_BLOCK_SIZE,
-                        false,
-                        mapNullKeysEnabled,
-                        false),
+                OrcReaderOptions.builder()
+                        .withMaxMergeDistance(new DataSize(1, MEGABYTE))
+                        .withTinyStripeThreshold(new DataSize(1, MEGABYTE))
+                        .withMaxBlockSize(MAX_BLOCK_SIZE)
+                        .withMapNullKeysEnabled(mapNullKeysEnabled)
+                        .build(),
                 false,
                 new DwrfEncryptionProvider(new UnsupportedEncryptionLibrary(), new TestingEncryptionLibrary()),
                 DwrfKeyProvider.of(intermediateEncryptionKeys),
@@ -1515,7 +1542,7 @@ public class OrcTester
     public static void writeOrcColumnPresto(File outputFile, Format format, CompressionKind compression, Type type, List<?> values)
             throws Exception
     {
-        writeOrcColumnsPresto(outputFile, format, compression, Optional.empty(), ImmutableList.of(type), ImmutableList.of(values), new OrcWriterStats());
+        writeOrcColumnsPresto(outputFile, format, compression, Optional.empty(), ImmutableList.of(type), ImmutableList.of(values), new NoOpOrcWriterStats());
     }
 
     public static void writeOrcColumnsPresto(File outputFile, Format format, CompressionKind compression, Optional<DwrfWriterEncryption> dwrfWriterEncryption, List<Type> types, List<List<?>> values, WriterStats stats)
@@ -1561,11 +1588,12 @@ public class OrcTester
                 new StorageOrcFileTailSource(),
                 new StorageStripeMetadataSource(),
                 NOOP_ORC_AGGREGATED_MEMORY_CONTEXT,
-                new OrcReaderOptions(
-                        dataSize,
-                        dataSize,
-                        dataSize,
-                        zstdJniDecompressionEnabled),
+                OrcReaderOptions.builder()
+                        .withMaxMergeDistance(dataSize)
+                        .withTinyStripeThreshold(dataSize)
+                        .withMaxBlockSize(dataSize)
+                        .withZstdJniDecompressionEnabled(zstdJniDecompressionEnabled)
+                        .build(),
                 false,
                 NO_ENCRYPTION,
                 DwrfKeyProvider.EMPTY,
@@ -1636,7 +1664,8 @@ public class OrcTester
             OrcPredicate predicate,
             Type type,
             int initialBatchSize,
-            boolean mapNullKeysEnabled)
+            boolean mapNullKeysEnabled,
+            boolean appendRowNumber)
             throws IOException
     {
         return createCustomOrcSelectiveRecordReader(
@@ -1654,7 +1683,8 @@ public class OrcTester
                 ImmutableMap.of(0, type),
                 ImmutableList.of(0),
                 mapNullKeysEnabled,
-                new TestingHiveOrcAggregatedMemoryContext());
+                new TestingHiveOrcAggregatedMemoryContext(),
+                appendRowNumber);
     }
 
     public static OrcSelectiveRecordReader createCustomOrcSelectiveRecordReader(
@@ -1672,7 +1702,8 @@ public class OrcTester
             Map<Integer, Type> includedColumns,
             List<Integer> outputColumns,
             boolean mapNullKeysEnabled,
-            OrcAggregatedMemoryContext systemMemoryUsage)
+            OrcAggregatedMemoryContext systemMemoryUsage,
+            boolean appendRowNumber)
             throws IOException
     {
         OrcDataSource orcDataSource = new FileOrcDataSource(file, new DataSize(1, MEGABYTE), new DataSize(1, MEGABYTE), new DataSize(1, MEGABYTE), true);
@@ -1682,13 +1713,13 @@ public class OrcTester
                 new StorageOrcFileTailSource(),
                 new StorageStripeMetadataSource(),
                 NOOP_ORC_AGGREGATED_MEMORY_CONTEXT,
-                new OrcReaderOptions(
-                        new DataSize(1, MEGABYTE),
-                        new DataSize(1, MEGABYTE),
-                        MAX_BLOCK_SIZE,
-                        false,
-                        mapNullKeysEnabled,
-                        false),
+                OrcReaderOptions.builder()
+                        .withMaxMergeDistance(new DataSize(1, MEGABYTE))
+                        .withTinyStripeThreshold(new DataSize(1, MEGABYTE))
+                        .withMaxBlockSize(MAX_BLOCK_SIZE)
+                        .withMapNullKeysEnabled(mapNullKeysEnabled)
+                        .withAppendRowNumber(appendRowNumber)
+                        .build(),
                 false,
                 new DwrfEncryptionProvider(new UnsupportedEncryptionLibrary(), new TestingEncryptionLibrary()),
                 DwrfKeyProvider.of(intermediateEncryptionKeys),

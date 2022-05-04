@@ -24,11 +24,14 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import org.apache.hadoop.hive.metastore.TableType;
 import org.apache.hadoop.hive.metastore.Warehouse;
+import org.apache.hadoop.hive.metastore.api.CheckLockRequest;
 import org.apache.hadoop.hive.metastore.api.ColumnStatisticsObj;
 import org.apache.hadoop.hive.metastore.api.Database;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.HiveObjectPrivilege;
 import org.apache.hadoop.hive.metastore.api.HiveObjectRef;
+import org.apache.hadoop.hive.metastore.api.LockRequest;
+import org.apache.hadoop.hive.metastore.api.LockResponse;
 import org.apache.hadoop.hive.metastore.api.MetaException;
 import org.apache.hadoop.hive.metastore.api.NoSuchObjectException;
 import org.apache.hadoop.hive.metastore.api.Partition;
@@ -39,6 +42,7 @@ import org.apache.hadoop.hive.metastore.api.RolePrincipalGrant;
 import org.apache.hadoop.hive.metastore.api.SerDeInfo;
 import org.apache.hadoop.hive.metastore.api.StorageDescriptor;
 import org.apache.hadoop.hive.metastore.api.Table;
+import org.apache.hadoop.hive.metastore.api.UnlockRequest;
 import org.apache.thrift.TException;
 
 import java.util.List;
@@ -70,7 +74,19 @@ public class MockHiveMetastoreClient
             new RolePrincipalGrant("role2", "role1", ROLE, true, 0, "grantor2", ROLE));
 
     private static final StorageDescriptor DEFAULT_STORAGE_DESCRIPTOR =
-            new StorageDescriptor(ImmutableList.of(), "", null, null, false, 0, new SerDeInfo(TEST_TABLE, null, ImmutableMap.of()), null, null, ImmutableMap.of());
+            new StorageDescriptor(
+                    ImmutableList.of(
+                            new FieldSchema("col_bigint", "bigint", "comment"),
+                            new FieldSchema("col_string", "string", "comment")),
+                    "",
+                    null,
+                    null,
+                    false,
+                    0,
+                    new SerDeInfo(TEST_TABLE, null, ImmutableMap.of()),
+                    null,
+                    null,
+                    ImmutableMap.of());
 
     private final AtomicInteger accessCount = new AtomicInteger();
     private boolean throwException;
@@ -415,5 +431,23 @@ public class MockHiveMetastoreClient
     public void setUGI(String userName)
     {
         // No-op
+    }
+
+    @Override
+    public LockResponse checkLock(CheckLockRequest request)
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public LockResponse lock(LockRequest request)
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void unlock(UnlockRequest request)
+    {
+        throw new UnsupportedOperationException();
     }
 }

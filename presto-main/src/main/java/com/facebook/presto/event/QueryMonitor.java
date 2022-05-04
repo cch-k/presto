@@ -129,6 +129,7 @@ public class QueryMonitor
                                 queryInfo.getQueryId().toString(),
                                 queryInfo.getSession().getTransactionId().map(TransactionId::toString),
                                 queryInfo.getQuery(),
+                                queryInfo.getPreparedQuery(),
                                 QUEUED.toString(),
                                 queryInfo.getSelf(),
                                 Optional.empty(),
@@ -145,6 +146,7 @@ public class QueryMonitor
                         queryInfo.getQueryId().toString(),
                         queryInfo.getSession().getTransactionId().map(TransactionId::toString),
                         queryInfo.getQuery(),
+                        queryInfo.getPreparedQuery(),
                         queryInfo.getState().toString(),
                         queryInfo.getSelf(),
                         Optional.empty(),
@@ -236,6 +238,7 @@ public class QueryMonitor
                 queryInfo.getQueryId().toString(),
                 queryInfo.getSession().getTransactionId().map(TransactionId::toString),
                 queryInfo.getQuery(),
+                queryInfo.getPreparedQuery(),
                 queryInfo.getState().toString(),
                 queryInfo.getSelf(),
                 createTextQueryPlan(queryInfo),
@@ -325,7 +328,7 @@ public class QueryMonitor
                 queryStats.getCumulativeUserMemory(),
                 queryStats.getCumulativeTotalMemory(),
                 queryStats.getCompletedDrivers(),
-                queryInfo.isCompleteInfo(),
+                queryInfo.isFinalQueryInfo(),
                 queryStats.getRuntimeStats());
     }
 
@@ -411,7 +414,8 @@ public class QueryMonitor
                             queryInfo.getOutput().get().getSchema(),
                             queryInfo.getOutput().get().getTable(),
                             tableFinishInfo.map(TableFinishInfo::getSerializedConnectorOutputMetadata),
-                            tableFinishInfo.map(TableFinishInfo::isJsonLengthLimitExceeded)));
+                            tableFinishInfo.map(TableFinishInfo::isJsonLengthLimitExceeded),
+                            queryInfo.getOutput().get().getSerializedCommitOutput()));
         }
         return new QueryIOMetadata(inputs.build(), output);
     }

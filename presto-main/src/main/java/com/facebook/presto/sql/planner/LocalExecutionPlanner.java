@@ -164,6 +164,7 @@ import com.facebook.presto.spi.relation.VariableReferenceExpression;
 import com.facebook.presto.spiller.PartitioningSpillerFactory;
 import com.facebook.presto.spiller.SingleStreamSpillerFactory;
 import com.facebook.presto.spiller.SpillerFactory;
+import com.facebook.presto.spiller.StandaloneSpillerFactory;
 import com.facebook.presto.split.MappedRecordSet;
 import com.facebook.presto.split.PageSinkManager;
 import com.facebook.presto.split.PageSourceProvider;
@@ -263,6 +264,7 @@ import static com.facebook.presto.SystemSessionProperties.isOptimizeCommonSubExp
 import static com.facebook.presto.SystemSessionProperties.isOptimizedRepartitioningEnabled;
 import static com.facebook.presto.SystemSessionProperties.isOrderByAggregationSpillEnabled;
 import static com.facebook.presto.SystemSessionProperties.isOrderBySpillEnabled;
+import static com.facebook.presto.SystemSessionProperties.isQuickDistinctLimitEnabled;
 import static com.facebook.presto.SystemSessionProperties.isSpillEnabled;
 import static com.facebook.presto.SystemSessionProperties.isWindowSpillEnabled;
 import static com.facebook.presto.common.type.BigintType.BIGINT;
@@ -367,6 +369,7 @@ public class LocalExecutionPlanner
     private final FragmentResultCacheManager fragmentResultCacheManager;
     private final ObjectMapper objectMapper;
     private final boolean tableFinishOperatorMemoryTrackingEnabled;
+    private final StandaloneSpillerFactory standaloneSpillerFactory;
 
     private static final TypeSignature SPHERICAL_GEOGRAPHY_TYPE_SIGNATURE = parseTypeSignature("SphericalGeography");
 
@@ -397,7 +400,8 @@ public class LocalExecutionPlanner
             JsonCodec<TableCommitContext> tableCommitContextCodec,
             DeterminismEvaluator determinismEvaluator,
             FragmentResultCacheManager fragmentResultCacheManager,
-            ObjectMapper objectMapper)
+            ObjectMapper objectMapper,
+            StandaloneSpillerFactory standaloneSpillerFactory)
     {
         this.explainAnalyzeContext = requireNonNull(explainAnalyzeContext, "explainAnalyzeContext is null");
         this.pageSourceProvider = requireNonNull(pageSourceProvider, "pageSourceProvider is null");
@@ -431,6 +435,7 @@ public class LocalExecutionPlanner
         this.fragmentResultCacheManager = requireNonNull(fragmentResultCacheManager, "fragmentResultCacheManager is null");
         this.objectMapper = requireNonNull(objectMapper, "objectMapper is null");
         this.tableFinishOperatorMemoryTrackingEnabled = requireNonNull(memoryManagerConfig, "memoryManagerConfig is null").isTableFinishOperatorMemoryTrackingEnabled();
+        this.standaloneSpillerFactory = requireNonNull(standaloneSpillerFactory, "standaloneSpillerFactory is null");
     }
 
     public LocalExecutionPlan plan(
@@ -1308,6 +1313,16 @@ public class LocalExecutionPlanner
             return visitScanFilterAndProject(context, node.getId(), sourceNode, filterExpression, node.getAssignments(), node.getOutputVariables(), node.getLocality());
         }
 
+        private int getFilterProjectMinRowCount(PlanNode projectSource)
+        {
+            // For final DistinctLimit, this project simply drops the hash variable so for better user experience, we set the limit to 1 so that results are shown quicker
+            if (isQuickDistinctLimitEnabled(session) && projectSource instanceof DistinctLimitNode && !((DistinctLimitNode) projectSource).isPartial()) {
+                return 1;
+            }
+
+            return getFilterAndProjectMinOutputPageRowCount(session);
+        }
+
         // TODO: This should be refactored, so that there's an optimizer that merges scan-filter-project into a single PlanNode
         private PhysicalOperation visitScanFilterAndProject(
                 LocalExecutionPlanContext context,
@@ -1440,7 +1455,7 @@ public class LocalExecutionPlanner
                             pageProcessor,
                             projections.stream().map(RowExpression::getType).collect(toImmutableList()),
                             getFilterAndProjectMinOutputPageSize(session),
-                            getFilterAndProjectMinOutputPageRowCount(session));
+                            getFilterProjectMinRowCount(sourceNode));
 
                     return new PhysicalOperation(operatorFactory, outputMappings, context, source);
                 }
@@ -1683,7 +1698,7 @@ public class LocalExecutionPlanner
             // The probe key channels will be handed to the index according to probeVariable order
             Map<VariableReferenceExpression, Integer> probeKeyLayout = new HashMap<>();
             for (int i = 0; i < probeVariables.size(); i++) {
-                // Duplicate variables can appear and we only need to take take one of the Inputs
+                // Duplicate variables can appear and we only need to take one of the Inputs
                 probeKeyLayout.put(probeVariables.get(i), i);
             }
 
@@ -3004,7 +3019,8 @@ public class LocalExecutionPlanner
                     joinCompiler,
                     lambdaProviders,
                     spillEnabled,
-                    session);
+                    session,
+                    standaloneSpillerFactory);
         }
 
         private PhysicalOperation planGlobalAggregation(AggregationNode node, PhysicalOperation source, LocalExecutionPlanContext context)
